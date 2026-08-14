@@ -24,9 +24,9 @@ from reportlab.pdfgen import canvas
 from automator.config import AppConfig, load_config
 
 # CUIT ficticios de respaldo cuando no hay sociedades configuradas.
-_FICTIONAL_BUYER_A = "30111111110"
-_FICTIONAL_BUYER_B = "30222222220"
-_FICTIONAL_UNKNOWN = "30999999990"
+_FICTIONAL_BUYER_A = "30111111118"
+_FICTIONAL_BUYER_B = "30222222229"
+_FICTIONAL_UNKNOWN = "30999999995"
 
 
 def _fmt_cuit(cuit: str) -> str:
@@ -52,7 +52,7 @@ def _invoice_lines(
         f"{letter}",
         f"Cod. {code}",
         f"Razon Social: {supplier}",
-        "CUIT: 30-99999999-9",
+        "CUIT: 30-99999999-5",
         "Fecha de Emision: 14/08/2026",
         f"Punto de Venta: {pv}    Comp. Nro: {number}",
         "CUIT del Cliente:",

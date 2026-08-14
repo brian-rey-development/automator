@@ -10,6 +10,7 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 
+from automator import __version__
 from automator.config import config_path, load_store
 from automator.logging_config import log_location, setup_logging
 from automator.ui.main_window import MainWindow
@@ -25,6 +26,7 @@ _MIN_SIZE = (980, 640)
 def main() -> None:
     """Inicializa logging, carga la configuracion y lanza la ventana principal."""
     setup_logging()
+    logger.info("Automator %s iniciando", __version__)
     try:
         _run()
     except Exception:

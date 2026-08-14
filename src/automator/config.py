@@ -18,9 +18,18 @@ APP_NAME = "Automator"
 APP_AUTHOR = "Brian Rey"
 
 _CUIT_LENGTH = 11
+_CUIT_WEIGHTS = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
 _MIN_STABILITY_TIMEOUT = 0.0
 _MAX_STABILITY_TIMEOUT = 120.0
 _TEMPLATE_TOKENS = {"supplier", "society", "year", "month", "day"}
+
+
+def _is_valid_cuit(digits: str) -> bool:
+    """Valida el digito verificador del CUIT (algoritmo modulo 11 de AFIP)."""
+    total = sum(int(digit) * weight for digit, weight in zip(digits[:10], _CUIT_WEIGHTS, strict=True))
+    expected = 11 - (total % 11)
+    expected = 0 if expected == 11 else expected
+    return expected != 10 and expected == int(digits[10])
 
 
 def _is_within(child: Path, parent: Path) -> bool:
@@ -63,6 +72,8 @@ class SocietyMapping(BaseModel):
         digits = re.sub(r"\D", "", value)
         if len(digits) != _CUIT_LENGTH:
             raise ValueError(f"El CUIT debe tener {_CUIT_LENGTH} digitos: '{value}'")
+        if not _is_valid_cuit(digits):
+            raise ValueError(f"El CUIT no es valido (digito verificador incorrecto): '{value}'")
         return digits
 
     @field_validator("name")

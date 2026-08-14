@@ -19,6 +19,7 @@ from tkinter import filedialog, messagebox, ttk
 import customtkinter as ctk
 from pydantic import ValidationError
 
+from automator import __version__
 from automator.config import AppConfig, ConfigStore, SocietyMapping, ledger_path, log_dir
 from automator.domain.models import ProcessOutcome, ProcessResult
 from automator.services import file_ops
@@ -190,7 +191,9 @@ class MainWindow(ctk.CTkFrame):
         titles = ctk.CTkFrame(brand, fg_color="transparent")
         titles.pack(side="left")
         ctk.CTkLabel(titles, text="Automator", font=self._f_h2, text_color="#ffffff").pack(anchor="w")
-        ctk.CTkLabel(titles, text="Facturas AFIP", font=self._f_hint, text_color=Palette.MUTED_ON_DARK).pack(anchor="w")
+        ctk.CTkLabel(
+            titles, text=f"Facturas AFIP  ·  v{__version__}", font=self._f_hint, text_color=Palette.MUTED_ON_DARK
+        ).pack(anchor="w")
 
         self._nav_item(sidebar, "monitor", "Monitor", row=1)
         self._nav_item(sidebar, "history", "Historial", row=2)

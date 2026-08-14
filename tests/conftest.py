@@ -10,19 +10,19 @@ import pytest
 from automator.config import AppConfig, SocietyMapping
 
 # CUIT ficticios de sociedades de prueba (coinciden con los textos de ejemplo).
-CUIT_ONE = "30111111110"
-CUIT_TWO = "30222222220"
+CUIT_ONE = "30111111118"
+CUIT_TWO = "30222222229"
 
 FACTURA_A_TEXT = """ORIGINAL
 FACTURA
 A
 Cod. 01
 Razon Social: PROVEEDOR EJEMPLO SRL
-CUIT: 30-99999999-9
+CUIT: 30-99999999-5
 Fecha de Emision: 01/08/2026
 Punto de Venta: 0001    Comp. Nro: 00000123
 Periodo Facturado
-CUIT: 30-11111111-0
+CUIT: 30-11111111-8
 Razon Social: COMPRADORA UNO SA
 """
 
@@ -32,7 +32,7 @@ B
 Cod. 08
 Razon Social: PROVEEDOR DOS SA
 Punto de Venta: 0003    Comp. Nro: 00000045
-CUIT: 30-22222222-0
+CUIT: 30-22222222-9
 """
 
 NOTA_DEBITO_B_TEXT = """ORIGINAL
@@ -41,7 +41,7 @@ B
 Cod. 07
 Razon Social: PROVEEDOR TRES SA
 Punto de Venta: 0005    Comp. Nro: 00000009
-CUIT: 30-22222222-0
+CUIT: 30-22222222-9
 """
 
 COMBINED_NUMBER_TEXT = """FACTURA
