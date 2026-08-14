@@ -109,6 +109,7 @@ class MainWindow(ctk.CTkFrame):
         self._f_h1 = ctk.CTkFont(self._family, 22, "bold")
         self._f_h2 = ctk.CTkFont(self._family, 15, "bold")
         self._f_body = ctk.CTkFont(self._family, 13)
+        self._f_body_bold = ctk.CTkFont(self._family, 13, "bold")
         self._f_small = ctk.CTkFont(self._family, 12)
         self._f_hint = ctk.CTkFont(self._family, 11)
         self._f_stat = ctk.CTkFont(self._family, 26, "bold")
@@ -130,35 +131,36 @@ class MainWindow(ctk.CTkFrame):
     # --- Fabricas de widgets reutilizables ---------------------------------
 
     def _primary_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
+        # Primario: color de marca (lima). La accion protagonista de cada vista.
         return ctk.CTkButton(
             parent,
             text=text,
             font=self._f_h2,
             height=44,
             corner_radius=CORNER_RADIUS,
-            fg_color=Palette.PRIMARY,
-            hover_color=Palette.PRIMARY_HOVER,
-            text_color="#ffffff",
+            fg_color=Palette.ACCENT,
+            hover_color=Palette.ACCENT_HOVER,
+            text_color=Palette.ACCENT_TEXT,
             command=command,
         )
 
     def _secondary_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
+        # Secundario: oscuro con texto blanco. Fuerte pero por debajo del primario.
         return ctk.CTkButton(
             parent,
             text=text,
             font=self._f_body,
             height=40,
             corner_radius=CORNER_RADIUS,
-            fg_color=Palette.SURFACE,
-            hover_color=Palette.BORDER,
-            text_color=Palette.TEXT,
-            border_width=1,
-            border_color=Palette.BORDER,
+            fg_color=Palette.PRIMARY,
+            hover_color=Palette.SIDEBAR_HOVER,
+            text_color="#ffffff",
             command=command,
         )
 
     def _ghost_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
-        return ctk.CTkButton(
+        # Terciario: gris apagado que se enciende (color + fondo sutil) al pasar el mouse.
+        button = ctk.CTkButton(
             parent,
             text=text,
             font=self._f_body,
@@ -166,9 +168,12 @@ class MainWindow(ctk.CTkFrame):
             corner_radius=CORNER_RADIUS,
             fg_color="transparent",
             hover_color=Palette.SURFACE_ALT,
-            text_color=Palette.TEXT,
+            text_color=Palette.MUTED,
             command=command,
         )
+        button.bind("<Enter>", lambda _event: button.configure(text_color=Palette.TEXT))
+        button.bind("<Leave>", lambda _event: button.configure(text_color=Palette.MUTED))
+        return button
 
     def _hint(self, parent: tk.Misc, text: str) -> ctk.CTkLabel:
         return ctk.CTkLabel(parent, text=text, font=self._f_hint, text_color=Palette.MUTED, anchor="w", justify="left")
@@ -716,9 +721,9 @@ class MainWindow(ctk.CTkFrame):
         bar.grid_columnconfigure(0, weight=1)
         left = ctk.CTkFrame(bar, fg_color="transparent")
         left.grid(row=0, column=0, sticky="w")
-        self._secondary_button(left, "Abrir carpeta de entrada", self._open_input).pack(side="left", padx=(0, 10))
-        self._secondary_button(left, "Abrir carpeta de salida", self._open_output).pack(side="left", padx=(0, 10))
-        self._secondary_button(left, "Abrir carpeta de logs", self._open_logs).pack(side="left")
+        self._ghost_button(left, "Abrir carpeta de entrada", self._open_input).pack(side="left", padx=(0, 10))
+        self._ghost_button(left, "Abrir carpeta de salida", self._open_output).pack(side="left", padx=(0, 10))
+        self._ghost_button(left, "Abrir carpeta de logs", self._open_logs).pack(side="left")
         self._primary_button(bar, "Guardar configuracion", self._save_config).grid(row=0, column=1, sticky="e")
 
     # --- Carga y recoleccion de configuracion ------------------------------
@@ -839,8 +844,9 @@ class MainWindow(ctk.CTkFrame):
         self._toggle_btn.configure(
             state="normal",
             text="Detener" if running else "Iniciar",
-            fg_color=Palette.ERROR if running else Palette.PRIMARY,
-            hover_color="#B83A3A" if running else Palette.PRIMARY_HOVER,
+            fg_color=Palette.ERROR if running else Palette.ACCENT,
+            hover_color="#B83A3A" if running else Palette.ACCENT_HOVER,
+            text_color="#ffffff" if running else Palette.ACCENT_TEXT,
         )
         self._status_dot.configure(text_color=Palette.SUCCESS if running else Palette.MUTED_ON_DARK)
         self._state_var.set("En ejecucion" if running else "Detenido")
