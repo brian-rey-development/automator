@@ -37,6 +37,11 @@ _PENDING_POLL_MS = 5000  # Relee las carpetas de pendientes cada 5s.
 _MAX_LOG_ROWS = 500
 _CUIT_LENGTH = 11
 
+# Glyphs de icono: heredan el color del texto del boton y no dependen de assets.
+_ICON_RETRY = "↻"  # flecha circular: reintentar
+_ICON_UNDO = "↶"  # flecha de retorno: deshacer
+_ICON_REFRESH = "⟳"  # flecha circular amplia: actualizar
+
 _OUTCOME_LABELS: dict[ProcessOutcome, str] = {
     ProcessOutcome.MOVED: "Archivado",
     ProcessOutcome.DRY_RUN: "Simulado",
@@ -161,7 +166,7 @@ class MainWindow(ctk.CTkFrame):
             corner_radius=CORNER_RADIUS,
             fg_color="transparent",
             hover_color=Palette.SURFACE_ALT,
-            text_color=Palette.MUTED,
+            text_color=Palette.TEXT,
             command=command,
         )
 
@@ -418,11 +423,19 @@ class MainWindow(ctk.CTkFrame):
         bar = ctk.CTkFrame(self._history_view, fg_color="transparent")
         bar.grid(row=1, column=0, sticky="ew", pady=(0, 16))
         # Jerarquia: accion protagonista a la izquierda, refrescar como control sutil a la derecha.
-        primary = self._primary_button(bar, "Reintentar pendientes", self._reprocess_pending)
-        primary.configure(height=40)
-        primary.pack(side="left", padx=(0, 10))
-        self._secondary_button(bar, "Deshacer ultimo movimiento", self._undo_last).pack(side="left")
-        self._ghost_button(bar, "Actualizar", self._refresh_history).pack(side="right")
+        self._retry_btn = self._primary_button(bar, f"{_ICON_RETRY}  Reintentar pendientes", self._reprocess_pending)
+        self._retry_btn.configure(height=40)
+        self._retry_btn.pack(side="left", padx=(0, 10))
+        self._undo_btn = self._secondary_button(bar, f"{_ICON_UNDO}  Deshacer ultimo movimiento", self._undo_last)
+        self._undo_btn.pack(side="left")
+        self._ghost_button(bar, f"{_ICON_REFRESH}  Actualizar", self._refresh_history).pack(side="right")
+
+    def _update_history_actions(self) -> None:
+        # Deshabilita lo que no se puede usar ahora: nada que deshacer, o nada pendiente.
+        running = self._engine.is_running
+        can_undo = not running and self._ledger is not None and self._ledger.last_undoable() is not None
+        self._undo_btn.configure(state="normal" if can_undo else "disabled")
+        self._retry_btn.configure(state="normal" if self._count_pending() > 0 else "disabled")
 
     def _build_history_table(self) -> None:
         card = ctk.CTkFrame(self._history_view, fg_color=Palette.SURFACE, corner_radius=CORNER_RADIUS)
@@ -455,6 +468,7 @@ class MainWindow(ctk.CTkFrame):
         self._history_tree.delete(*self._history_tree.get_children())
         for record in self._ledger.recent():
             self._history_tree.insert("", "end", values=_history_row(record), tags=(_history_tag(record),))
+        self._update_history_actions()
 
     def _undo_last(self) -> None:
         if self._ledger is None:
@@ -832,6 +846,9 @@ class MainWindow(ctk.CTkFrame):
         self._state_var.set("En ejecucion" if running else "Detenido")
         if not running:
             self._detail_var.set("Monitoreo detenido")
+        # Deshacer depende de que el monitor este detenido; refleja el cambio al instante.
+        if hasattr(self, "_undo_btn"):
+            self._update_history_actions()
 
     # --- Pickers y navegacion ----------------------------------------------
 
@@ -864,6 +881,8 @@ class MainWindow(ctk.CTkFrame):
             else:
                 self._pending_banner.grid_remove()
             self._maybe_notify_pending(count)
+            if hasattr(self, "_retry_btn"):
+                self._retry_btn.configure(state="normal" if count > 0 else "disabled")
         finally:
             self.after(_PENDING_POLL_MS, self._poll_pending)
 
