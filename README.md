@@ -10,6 +10,9 @@ Reemplaza al script original de una sola pieza por una aplicacion completa con
 interfaz grafica moderna, configuracion persistente, manejo de errores robusto
 y una bateria de tests.
 
+No trae ninguna empresa ni CUIT precargado: todo se configura desde la interfaz.
+En el primer arranque, un asistente ayuda a definir lo minimo.
+
 ## Caracteristicas
 
 - Interfaz moderna (CustomTkinter) pensada para usarse sin experiencia previa:
@@ -117,3 +120,15 @@ tests/         Bateria de tests del nucleo y los servicios
 
 El motor corre en un hilo de fondo y se comunica con la interfaz mediante una
 cola de eventos, respetando que Tkinter no es seguro entre hilos.
+
+## Documentacion
+
+- [`docs/architecture.md`](docs/architecture.md) - capas, concurrencia y flujo.
+- [`docs/features.md`](docs/features.md) - funcionalidades en detalle.
+- [`docs/configuration.md`](docs/configuration.md) - campos y plantilla de carpetas.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) - flujo de desarrollo y estandares.
+- [`CHANGELOG.md`](CHANGELOG.md) - historial de versiones.
+
+## Licencia
+
+MIT. Ver [`LICENSE`](LICENSE).
