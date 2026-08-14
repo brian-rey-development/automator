@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
 from pathlib import Path
 
@@ -40,6 +41,7 @@ class ParsedInvoice:
     supplier: str  # Razon social del proveedor
     buyer_cuit: str | None  # CUIT de la sociedad compradora detectada
     ambiguous_buyer: bool = False  # Aparecen varias sociedades propias: no se puede decidir
+    issue_date: date | None = None  # Fecha de emision, si se pudo leer
 
     @property
     def full_number(self) -> str:
@@ -55,6 +57,13 @@ class ParsedInvoice:
         """True si se detecto la razon social del proveedor (no el centinela)."""
         return self.supplier != UNKNOWN_SUPPLIER
 
+    @property
+    def identity(self) -> str | None:
+        """Clave estable de la factura para detectar duplicados; None si no es fiable."""
+        if not self.has_number or not self.has_supplier:
+            return None
+        return f"{self.supplier.casefold()}|{self.full_number}|{self.voucher.label}"
+
 
 class ProcessOutcome(StrEnum):
     """Resultado posible del procesamiento de un archivo."""
@@ -62,6 +71,7 @@ class ProcessOutcome(StrEnum):
     MOVED = "moved"
     DRY_RUN = "dry_run"
     UNCLASSIFIED = "unclassified"  # Archivado, pero sin poder identificar la sociedad compradora.
+    DUPLICATE = "duplicate"  # Ya se habia archivado una factura con la misma identidad.
     NEEDS_REVIEW = "needs_review"
     QUARANTINED = "quarantined"
     SKIPPED_MISSING = "skipped_missing"

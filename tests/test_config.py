@@ -149,6 +149,17 @@ def test_output_folder_inside_input_is_rejected() -> None:
         )
 
 
+def test_invalid_template_token_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig(
+            input_folder=Path("/a"),
+            base_output_folder=Path("/b"),
+            unknown_folder=Path("/c"),
+            quarantine_folder=Path("/d"),
+            destination_template="{proveedor}",  # token invalido (es {supplier})
+        )
+
+
 def test_review_folder_is_under_output() -> None:
     config = default_config()
     assert config.review_folder.parent == config.base_output_folder

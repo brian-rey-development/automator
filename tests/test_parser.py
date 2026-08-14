@@ -76,6 +76,18 @@ def test_two_known_cuits_are_marked_ambiguous() -> None:
     assert invoice.ambiguous_buyer
 
 
+def test_detects_issue_date() -> None:
+    from datetime import date
+
+    invoice = parse_invoice(FACTURA_A_TEXT)
+    assert invoice.issue_date == date(2026, 8, 1)
+
+
+def test_missing_or_invalid_date_is_none() -> None:
+    assert parse_invoice("FACTURA\nCod. 01\n").issue_date is None
+    assert parse_invoice("Fecha de Emision: 45/13/2026\n").issue_date is None
+
+
 def test_empty_text_uses_deterministic_defaults() -> None:
     invoice = parse_invoice("")
     assert invoice.voucher.label == "FC A"

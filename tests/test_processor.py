@@ -94,6 +94,18 @@ def test_invoice_without_number_goes_to_review(
     assert config.review_folder in result.destination.parents
 
 
+def test_duplicate_invoice_goes_to_duplicates_folder(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config()
+    source = dummy_pdf("repetida.pdf")
+    processor = InvoiceProcessor(lambda: config, extractor=lambda _p: FACTURA_A_TEXT, is_duplicate=lambda _inv: True)
+    result = processor.process(source)
+    assert result.outcome is ProcessOutcome.DUPLICATE
+    assert result.destination is not None
+    assert config.duplicates_folder in result.destination.parents
+
+
 def test_ambiguous_intercompany_invoice_goes_to_review(
     make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path], tmp_path: Path
 ) -> None:

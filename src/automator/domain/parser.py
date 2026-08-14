@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from datetime import date
 
 from automator.domain.models import UNKNOWN_SUPPLIER, ParsedInvoice, Voucher, VoucherKind
 
@@ -64,6 +65,7 @@ _NUMBER_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 _SUPPLIER_PATTERN = re.compile(r"Raz[oó]n\s+Social\s*:?\s*(.+)", re.IGNORECASE)
 _CUIT_SEPARATORS = re.compile(r"[\s.\-]")
+_DATE_PATTERN = re.compile(r"Fecha\s+de\s+Emisi[oó]n\s*:?\s*(\d{2})/(\d{2})/(\d{4})", re.IGNORECASE)
 
 
 def parse_invoice(text: str, known_cuits: Iterable[str] = ()) -> ParsedInvoice:
@@ -77,7 +79,19 @@ def parse_invoice(text: str, known_cuits: Iterable[str] = ()) -> ParsedInvoice:
         supplier=_detect_supplier(text),
         buyer_cuit=buyer_cuit,
         ambiguous_buyer=ambiguous,
+        issue_date=_detect_date(text),
     )
+
+
+def _detect_date(text: str) -> date | None:
+    match = _DATE_PATTERN.search(text)
+    if not match:
+        return None
+    day, month, year = (int(group) for group in match.groups())
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None  # Fecha con dia/mes fuera de rango: se ignora sin romper.
 
 
 def _detect_voucher(text: str) -> Voucher:

@@ -19,14 +19,25 @@ logger = logging.getLogger(__name__)
 # Callable inyectables para poder testear sin PDFs ni configuracion global reales.
 TextExtractor = Callable[[Path], str]
 ConfigProvider = Callable[[], AppConfig]
+DuplicateCheck = Callable[[ParsedInvoice], bool]
+
+
+def _never_duplicate(_invoice: ParsedInvoice) -> bool:
+    return False
 
 
 class InvoiceProcessor:
     """Procesa un PDF: lo lee, extrae datos, lo clasifica y lo archiva."""
 
-    def __init__(self, config_provider: ConfigProvider, extractor: TextExtractor = extract_text) -> None:
+    def __init__(
+        self,
+        config_provider: ConfigProvider,
+        extractor: TextExtractor = extract_text,
+        is_duplicate: DuplicateCheck = _never_duplicate,
+    ) -> None:
         self._config_provider = config_provider
         self._extractor = extractor
+        self._is_duplicate = is_duplicate
 
     def process(self, source: Path) -> ProcessResult:
         config = self._config_provider()
@@ -63,6 +74,15 @@ class InvoiceProcessor:
                 ProcessOutcome.NEEDS_REVIEW,
                 "Datos incompletos: se envio a revision manual.",
             )
+        if self._is_duplicate(invoice):
+            return self._archive(
+                source,
+                config,
+                invoice,
+                config.duplicates_folder,
+                ProcessOutcome.DUPLICATE,
+                "Duplicado: ya se habia archivado esta factura antes.",
+            )
         if invoice.buyer_cuit is None:
             # Se archiva igual (no se pierde), pero con un estado distinto para que el
             # usuario vea que la sociedad compradora no se pudo identificar.
@@ -92,7 +112,7 @@ class InvoiceProcessor:
         outcome: ProcessOutcome,
         message: str,
     ) -> ProcessResult:
-        target_dir = destination_dir(invoice, base_folder)
+        target_dir = destination_dir(invoice, base_folder, config.destination_template)
         filename = build_filename(invoice)
         if config.dry_run:
             return _result(
