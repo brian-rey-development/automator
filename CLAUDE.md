@@ -1,99 +1,105 @@
 # CLAUDE.md
 
-Guia para trabajar en este repositorio. Extiende las instrucciones globales del
-usuario; ante conflicto, este archivo manda para todo lo especifico del proyecto.
+Guide for working in this repository. It extends the user's global instructions;
+on conflict, this file wins for anything project-specific.
 
-## Que es
+## What it is
 
-Automator (autor: Brian Rey) es una aplicacion de escritorio que vigila una
-carpeta de descargas, lee cada factura AFIP en PDF, detecta tipo de comprobante,
-numero, proveedor y sociedad compradora (por CUIT), y archiva el PDF renombrado
-en la carpeta correcta. Se empaqueta como un `.exe` de Windows.
+Automator (author: Brian Rey) is a desktop application that watches a downloads
+folder, reads each AFIP invoice PDF, detects the voucher type, number, supplier
+and buying company (by CUIT), and files the renamed PDF into the right folder.
+It is packaged as a Windows `.exe`.
 
-## Principio rector
+## Guiding principle
 
-**Ninguna factura se archiva mal ni se pierde en silencio.** Ante cualquier
-incertidumbre (proveedor no detectado, comprador ambiguo, PDF ilegible), el
-archivo va a revision o cuarentena, nunca a un destino adivinado con un "ok".
-Todo cambio debe preservar esta invariante.
+**No invoice is ever misfiled or lost silently.** On any uncertainty (supplier
+not detected, ambiguous buyer, unreadable PDF), the file goes to review or
+quarantine, never to a destination guessed with an "ok". Every change must
+preserve this invariant.
 
-## Comandos
+## Commands
 
 ```bash
-make install    # crea .venv e instala app + dev
-make run        # ejecuta la app (equivale a python -m automator)
-make demo       # genera facturas de ejemplo y abre la app
-make check      # lint + tipos + tests (correr antes de commitear)
-make build      # genera el icono y el .exe con PyInstaller
+make install    # create .venv and install app + dev deps
+make run        # run the app (same as python -m automator)
+make demo       # generate sample invoices and open the app
+make check      # lint + types + tests (run before committing)
+make build      # generate the icon and the .exe with PyInstaller
 ```
 
-Herramientas sueltas: `ruff check .`, `ruff format .`, `mypy`, `pytest`.
+Standalone tools: `ruff check .`, `ruff format .`, `mypy`, `pytest`.
 
-## Arquitectura
+## Architecture
 
-Tres capas, dependencias hacia adentro (ui -> services -> domain):
+Three layers, dependencies pointing inward (ui -> services -> domain):
 
-- `src/automator/domain/` - logica pura, sin efectos secundarios, 100% testeable
-  (modelos, parser, clasificacion, nombres). Nunca hace IO.
-- `src/automator/services/` - IO y orquestacion: lectura de PDF, operaciones de
-  archivo, watcher, motor de procesamiento y ledger (historial en SQLite).
-- `src/automator/ui/` - interfaz CustomTkinter. No contiene reglas de negocio.
-- `src/automator/config.py` - modelo de configuracion validado e inmutable y su
-  persistencia atomica.
+- `src/automator/domain/` - pure logic, no side effects, 100% testable (models,
+  parser, classification, naming). Never does IO.
+- `src/automator/services/` - IO and orchestration: PDF reading, file operations,
+  watcher, processing engine and ledger (history in SQLite).
+- `src/automator/ui/` - CustomTkinter interface. Contains no business rules.
+- `src/automator/config.py` - validated, immutable configuration model and its
+  atomic persistence.
 
-### Modelo de concurrencia
+### Concurrency model
 
-El motor (`services/engine.py`) corre en un hilo de fondo con una cola. La UI se
-comunica con el via `EngineEvent` en una `queue.Queue` que se drena solo desde el
-hilo de Tkinter (`_poll_events`). **Tkinter no es thread-safe: nunca tocar
-widgets desde un hilo que no sea el principal.** La cola y la señal de parada se
-recrean por cada arranque ("generacion") para que un worker viejo nunca comparta
-cola con uno nuevo.
+The engine (`services/engine.py`) runs on a background thread with a queue. The
+UI talks to it via `EngineEvent` on a `queue.Queue` drained only from the Tkinter
+thread (`_poll_events`). **Tkinter is not thread-safe: never touch widgets from a
+thread other than the main one.** The queue and the stop signal are recreated on
+every start ("generation") so an old worker never shares a queue with a new one.
 
-### Datos en disco
+### On-disk data
 
-- Config: `config.json` en el directorio de config del usuario (platformdirs).
-- Historial: `history.db` (SQLite) en el directorio de datos del usuario.
-- Logs: `automator.log` rotativo en el directorio de logs del usuario.
+- Config: `config.json` in the user's config directory (platformdirs).
+- History: `history.db` (SQLite) in the user's data directory.
+- Logs: rotating `automator.log` in the user's log directory.
 
-Rutas resueltas en `config.py` (`config_path`, `ledger_path`, `log_dir`).
+Paths resolved in `config.py` (`config_path`, `ledger_path`, `log_dir`).
 
-## Convenciones de codigo
+## Code conventions
 
-- **Identificadores en ingles, comentarios en español.** Comentar solo el porque
-  no obvio (una invariante, un workaround), nunca lo que el codigo ya dice.
-- TypeScript-equivalente estricto: `mypy --strict`, sin `Any` injustificado.
-- Funciones <= 20 lineas, retornos tempranos, inmutabilidad por defecto.
-- Sin em dashes en ningun texto (prosa, docs, commits). Usar guiones normales.
-- Validar en los bordes (input de usuario, APIs externas); confiar en el interior.
-- `AppConfig` y `SocietyMapping` son `frozen`: para cambiar la config se construye
-  un objeto nuevo, no se muta. `ConfigStore.get()` devuelve el snapshot compartido.
+- **Identifiers and comments in English.** Comment only the non-obvious why (an
+  invariant, a workaround), never what the code already says.
+- User-facing strings stay in Spanish (the app's end users are Spanish speakers):
+  UI labels, dialog messages and notifications are Spanish; comments and docs are
+  English.
+- Strict typing: `mypy --strict`, no unjustified `Any`.
+- Functions <= 20 lines, early returns, immutability by default.
+- No em dashes in any text (prose, docs, commits). Use regular hyphens.
+- Validate at the boundaries (user input, external APIs); trust the interior.
+- `AppConfig` and `SocietyMapping` are `frozen`: to change the config you build a
+  new object, you do not mutate it. `ConfigStore.get()` returns the shared snapshot.
 
 ## Testing
 
-- El nucleo (`domain/` y `services/`) se testea con pytest; apuntar a cubrir cada
-  rama de decision del procesamiento (movido, sin clasificar, duplicado, revision,
-  cuarentena).
-- La UI no tiene tests automatizados (limitacion conocida de apps Tkinter); se
-  valida con smokes manuales. Al tocar la UI, correr un smoke que construya
-  `MainWindow` sin excepciones.
-- `tests/conftest.py` tiene textos de factura de ejemplo y una fabrica `make_config`.
+- The core (`domain/` and `services/`) is tested with pytest; aim to cover every
+  decision branch of processing (moved, unclassified, duplicate, review,
+  quarantine).
+- The UI has functional smoke tests in `tests/test_ui.py` that skip themselves
+  when there is no display (they run under xvfb in CI). When touching the UI, run
+  a smoke that builds `MainWindow` without exceptions.
+- `tests/conftest.py` has sample invoice texts and a `make_config` factory.
 
 ## Gotchas
 
-- Movimientos de archivo atomicos (`os.replace`) y sin sobrescribir (sufijo ` (n)`).
-- Windows: prefijo de rutas largas y forma `\\?\UNC\` para rutas de red (`file_ops`).
-- El parser nunca lanza: ante texto inesperado devuelve defaults deterministas.
-- La deteccion de duplicados usa la identidad `proveedor|numero|tipo` contra el
-  ledger; solo cuentan como "ya archivada" los resultados MOVED/UNCLASSIFIED.
+- File moves use `shutil.move` (works across drives) and never overwrite (suffix
+  ` (n)`). Copy mode uses `shutil.copy2` and leaves the original in place.
+- In copy mode the original stays in the input folder, so the engine records a
+  stable source signature (path, size, mtime) in the ledger to avoid reprocessing.
+- Windows: long-path prefix and the `\\?\UNC\` form for network paths (`file_ops`).
+- The parser never raises: on unexpected text it returns deterministic defaults.
+- Duplicate detection uses the identity `supplier|number|type` against the ledger;
+  only MOVED/UNCLASSIFIED results count as "already filed".
 
-## Estructura
+## Structure
 
 ```
-src/automator/      codigo fuente (domain / services / ui / config)
-tests/              bateria de tests del nucleo y servicios
-scripts/            generadores (icono, facturas de ejemplo) y build de Windows
-installer/          script de Inno Setup para el instalador
-assets/             icono de marca (.ico / .png)
-docs/               arquitectura, features y configuracion
+src/automator/      source code (domain / services / ui / config)
+tests/              core and services test suite
+scripts/            generators (icon, sample invoices) and Windows build
+installer/          Inno Setup script for the installer
+assets/             brand icon (.ico / .png)
+docs/               architecture, features and configuration
 ```
+</content>

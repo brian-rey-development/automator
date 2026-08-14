@@ -1,4 +1,4 @@
-"""Lectura de texto desde archivos PDF."""
+"""Text extraction from PDF files."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 def extract_text(path: Path) -> str:
-    """Devuelve todo el texto extraible del PDF, concatenando sus paginas.
+    """Returns all extractable text from the PDF, concatenating its pages.
 
-    Se abre con `with` para cerrar el archivo de forma deterministica: en Windows,
-    un handle abierto haria fallar el posterior movimiento del PDF (WinError 32).
+    Opened with `with` to close the file deterministically: on Windows, an open
+    handle would make the later move of the PDF fail (WinError 32).
     """
     with path.open("rb") as stream:
         reader = PdfReader(stream)
@@ -23,10 +23,10 @@ def extract_text(path: Path) -> str:
 
 
 def _page_text(page: Any) -> str:
-    # Una pagina corrupta no debe descartar el texto de las demas; ante su fallo se
-    # continua. Si con eso faltan datos clave, el parser lo marcara para revision.
+    # A corrupt page must not discard the text of the others; on its failure we
+    # continue. If key data is missing as a result, the parser will flag it for review.
     try:
         return page.extract_text() or ""
-    except Exception:  # noqa: BLE001 -- resiliencia deliberada: una pagina rota no descarta el resto
+    except Exception:  # noqa: BLE001 -- deliberate resilience: one broken page does not discard the rest
         logger.warning("No se pudo extraer texto de una pagina; se continua con el resto")
         return ""

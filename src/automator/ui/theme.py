@@ -1,8 +1,8 @@
-"""Design system: paleta de marca, tipografias, logo y estilo de la tabla.
+"""Design system: brand palette, typography, logo and table styling.
 
-La identidad combina un fondo papel calido, una barra lateral casi negra y un
-unico acento chartreuse usado con moderacion. Es una eleccion deliberada de
-un solo tema (claro) hecho con cuidado, no un tema generico.
+The identity combines a warm paper background, an almost-black sidebar and a
+single chartreuse accent used sparingly. It is a deliberate choice of a
+single (light) theme done with care, not a generic theme.
 """
 
 from __future__ import annotations
@@ -15,22 +15,22 @@ import customtkinter as ctk
 
 
 class Palette:
-    """Colores de marca de Automator."""
+    """Automator brand colors."""
 
-    BG = "#F5F5F1"  # Papel calido
+    BG = "#F5F5F1"  # Warm paper
     SURFACE = "#FFFFFF"
     SURFACE_ALT = "#F0F0EC"
     BORDER = "#E4E4DD"
 
-    SIDEBAR = "#16181D"  # Casi negro
+    SIDEBAR = "#16181D"  # Almost black
     SIDEBAR_HOVER = "#23262E"
     SIDEBAR_ACTIVE = "#23262E"
 
-    ACCENT = "#C9F24D"  # Chartreuse, el acento distintivo
+    ACCENT = "#C9F24D"  # Chartreuse, the distinctive accent
     ACCENT_HOVER = "#B6E035"
     ACCENT_TEXT = "#16181D"
 
-    PRIMARY = "#16181D"  # Boton principal premium (oscuro)
+    PRIMARY = "#16181D"  # Premium primary button (dark)
     PRIMARY_HOVER = "#000000"
 
     TEXT = "#16181D"
@@ -53,19 +53,19 @@ _FALLBACK_FAMILY = "Helvetica"
 
 
 def font_family(root: tk.Misc) -> str:
-    """Devuelve Segoe UI en Windows o una alternativa disponible en otros sistemas."""
+    """Returns Segoe UI on Windows or an available alternative on other systems."""
     families = set(tkfont.families(root))
     return _PREFERRED_FAMILY if _PREFERRED_FAMILY in families else _FALLBACK_FAMILY
 
 
 def init_appearance() -> None:
-    """Configura el modo de apariencia global de CustomTkinter."""
+    """Configures the global appearance mode of CustomTkinter."""
     ctk.set_appearance_mode("light")
     ctk.set_default_color_theme("blue")
 
 
 def create_brand_mark(parent: tk.Misc, size: int = 34) -> tk.Canvas:
-    """Dibuja el isotipo de Automator: un rayo oscuro sobre un mosaico chartreuse."""
+    """Draws the Automator icon mark: a dark bolt over a chartreuse tile."""
     canvas = tk.Canvas(parent, width=size, height=size, bg=Palette.SIDEBAR, highlightthickness=0, bd=0)
     _rounded_rect(canvas, 1, 1, size - 1, size - 1, radius=size * 0.28, fill=Palette.ACCENT)
     bolt = [0.56, 0.14, 0.31, 0.55, 0.47, 0.55, 0.42, 0.86, 0.69, 0.43, 0.51, 0.43, 0.60, 0.14]
@@ -74,7 +74,7 @@ def create_brand_mark(parent: tk.Misc, size: int = 34) -> tk.Canvas:
 
 
 def configure_table_style(root: tk.Misc, family: str) -> None:
-    """Estiliza la tabla ttk.Treeview para que combine con el design system."""
+    """Styles the ttk.Treeview table to match the design system."""
     style = ttk.Style(root)
     style.theme_use("clam")
     style.configure(

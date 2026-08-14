@@ -1,4 +1,4 @@
-"""Configuracion de la aplicacion: modelo validado, persistencia y store seguro."""
+"""Application configuration: validated model, persistence and a safe store."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ _TEMPLATE_TOKENS = {"supplier", "society", "year", "month", "day"}
 
 
 def _is_valid_cuit(digits: str) -> bool:
-    """Valida el digito verificador del CUIT (algoritmo modulo 11 de AFIP)."""
+    """Validate the CUIT check digit (AFIP modulo 11 algorithm)."""
     total = sum(int(digit) * weight for digit, weight in zip(digits[:10], _CUIT_WEIGHTS, strict=True))
     expected = 11 - (total % 11)
     expected = 0 if expected == 11 else expected
@@ -33,7 +33,7 @@ def _is_valid_cuit(digits: str) -> bool:
 
 
 def _is_within(child: Path, parent: Path) -> bool:
-    """True si child es igual a parent o esta anidada dentro de parent."""
+    """True if child equals parent or is nested inside parent."""
     try:
         child.relative_to(parent)
         return True
@@ -58,9 +58,9 @@ def log_dir() -> Path:
 
 
 class SocietyMapping(BaseModel):
-    """Asociacion entre el CUIT de una sociedad y su carpeta de proveedores."""
+    """Association between a company's CUIT and its suppliers folder."""
 
-    model_config = ConfigDict(frozen=True)  # Inmutable: se puede compartir sin copiar.
+    model_config = ConfigDict(frozen=True)  # Immutable: can be shared without copying.
 
     cuit: str
     name: str
@@ -86,17 +86,17 @@ class SocietyMapping(BaseModel):
     @field_validator("folder")
     @classmethod
     def _folder_must_be_absolute(cls, value: Path) -> Path:
-        # Una carpeta vacia se resolveria a Path('.') (el directorio de trabajo) y
-        # archivaria las facturas en un lugar impredecible: se exige ruta absoluta.
+        # An empty folder would resolve to Path('.') (the working directory) and
+        # would archive invoices in an unpredictable place: an absolute path is required.
         if not str(value).strip() or not value.is_absolute():
             raise ValueError("La carpeta debe ser una ruta absoluta (elegila con 'Elegir').")
         return value
 
 
 class AppConfig(BaseModel):
-    """Configuracion completa de la aplicacion."""
+    """Full application configuration."""
 
-    model_config = ConfigDict(frozen=True)  # Inmutable: snapshot compartible sin copiar.
+    model_config = ConfigDict(frozen=True)  # Immutable: shareable snapshot without copying.
 
     input_folder: Path
     base_output_folder: Path
@@ -106,12 +106,12 @@ class AppConfig(BaseModel):
     dry_run: bool = False
     wait_for_stability: bool = True
     stability_timeout_s: float = Field(default=10.0, ge=_MIN_STABILITY_TIMEOUT, le=_MAX_STABILITY_TIMEOUT)
-    # Plantilla de subcarpetas dentro de la carpeta de cada sociedad. Tokens validos:
-    # {supplier} {society} {year} {month} {day}. Por defecto solo por proveedor.
+    # Subfolder template inside each company's folder. Valid tokens:
+    # {supplier} {society} {year} {month} {day}. By default only by supplier.
     destination_template: str = "{supplier}"
-    notify: bool = True  # Avisos del sistema cuando algo necesita atencion.
-    # Copiar en vez de mover: deja el original en la carpeta de entrada. El motor
-    # recuerda cada archivo ya procesado (en el ledger) para no reprocesarlo.
+    notify: bool = True  # System notifications when something needs attention.
+    # Copy instead of move: leaves the original in the input folder. The engine
+    # remembers each already-processed file (in the ledger) so it is not reprocessed.
     copy_files: bool = False
 
     @model_validator(mode="after")
@@ -124,8 +124,8 @@ class AppConfig(BaseModel):
 
     @model_validator(mode="after")
     def _reject_output_inside_input(self) -> AppConfig:
-        # Una carpeta de salida dentro de la de entrada haria que el watcher detecte
-        # los archivos recien archivados y los reprocese en un bucle infinito.
+        # An output folder inside the input one would make the watcher detect
+        # the just-archived files and reprocess them in an infinite loop.
         outputs = [self.base_output_folder, self.unknown_folder, self.quarantine_folder]
         outputs.extend(society.folder for society in self.societies)
         if any(_is_within(folder, self.input_folder) for folder in outputs):
@@ -143,12 +143,12 @@ class AppConfig(BaseModel):
 
     @property
     def review_folder(self) -> Path:
-        """Carpeta para facturas con datos incompletos que requieren revision manual."""
+        """Folder for invoices with incomplete data that require manual review."""
         return self.base_output_folder / "_PARA_REVISAR"
 
     @property
     def duplicates_folder(self) -> Path:
-        """Carpeta para facturas ya archivadas antes (detectadas por identidad)."""
+        """Folder for invoices already archived before (detected by identity)."""
         return self.base_output_folder / "_DUPLICADOS"
 
     def known_cuits(self) -> list[str]:
@@ -177,9 +177,9 @@ class AppConfig(BaseModel):
         return folders
 
     def ensure_folders(self) -> None:
-        # La carpeta de entrada es critica: sin ella no hay nada que monitorear, asi
-        # que su error se propaga. Las de salida se crean al vuelo al mover; si una
-        # (por ejemplo un disco de red) no esta disponible ahora, no bloquea el arranque.
+        # The input folder is critical: without it there is nothing to monitor, so
+        # its error propagates. Output folders are created on the fly when moving; if one
+        # (for example a network drive) is not available now, it does not block startup.
         self.input_folder.mkdir(parents=True, exist_ok=True)
         for folder in self.all_folders():
             if folder == self.input_folder:
@@ -191,10 +191,10 @@ class AppConfig(BaseModel):
 
 
 def default_config() -> AppConfig:
-    """Configuracion inicial neutra, sin ninguna empresa precargada.
+    """Neutral initial configuration, with no company preloaded.
 
-    No se codifica ningun dato real: el usuario define sus sociedades y CUITs
-    desde la interfaz (o el asistente de primera vez). Arranca sin sociedades.
+    No real data is hardcoded: the user defines their companies and CUITs
+    from the interface (or the first-time wizard). It starts with no companies.
     """
     home = Path.home()
     base = home / "Automator" / "Facturas ordenadas"
@@ -207,11 +207,11 @@ def default_config() -> AppConfig:
 
 
 def load_config(path: Path | None = None) -> AppConfig:
-    """Carga la configuracion; ante ausencia, corrupcion o error de lectura degrada a default.
+    """Load the configuration; on absence, corruption or read error it degrades to the default.
 
-    Se distinguen dos casos para no destruir una config valida por un problema
-    transitorio: un error de lectura (bloqueo, permisos, disco de red) NO toca el
-    archivo; solo el contenido genuinamente invalido se respalda para diagnostico.
+    Two cases are distinguished so a valid config is not destroyed by a transient
+    problem: a read error (lock, permissions, network drive) does NOT touch the
+    file; only genuinely invalid content is backed up for diagnostics.
     """
     target = path or config_path()
     if not target.exists():
@@ -219,29 +219,29 @@ def load_config(path: Path | None = None) -> AppConfig:
     try:
         raw = target.read_text(encoding="utf-8")
     except OSError as exc:
-        # Error transitorio: se preserva el archivo del usuario para el proximo arranque.
+        # Transient error: the user's file is preserved for the next startup.
         logger.warning("No se pudo leer la config en %s; se usa la default sin tocar el archivo (%s)", target, exc)
         return default_config()
     try:
         return AppConfig.model_validate_json(raw)
     except (ValidationError, ValueError) as exc:
-        # Contenido invalido (archivo viejo o dañado): se respalda y se usa la default.
+        # Invalid content (old or damaged file): it is backed up and the default is used.
         logger.warning("Config invalida en %s; se respalda y se usa la configuracion por defecto (%s)", target, exc)
         _backup_corrupt_config(target)
         return default_config()
 
 
 def save_config(config: AppConfig, path: Path | None = None) -> None:
-    """Guarda la configuracion de forma atomica (escribe a temporal y reemplaza)."""
+    """Save the configuration atomically (write to a temp file and replace)."""
     target = path or config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f"{target.name}.tmp")
     tmp.write_text(config.model_dump_json(indent=2), encoding="utf-8")
-    os.replace(tmp, target)  # Rename atomico: nunca deja el archivo a medio escribir.
+    os.replace(tmp, target)  # Atomic rename: never leaves the file half-written.
 
 
 def _backup_corrupt_config(target: Path) -> None:
-    # Nombre con timestamp: nunca pisa un respaldo previo (podria contener la ultima config buena).
+    # Timestamped name: never overwrites a previous backup (it could hold the last good config).
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     backup = target.with_name(f"{target.name}.{stamp}.corrupt")
     try:
@@ -251,11 +251,11 @@ def _backup_corrupt_config(target: Path) -> None:
 
 
 class ConfigStore:
-    """Contenedor thread-safe de la configuracion viva de la aplicacion.
+    """Thread-safe container for the application's live configuration.
 
-    AppConfig es inmutable (frozen), asi que el worker en segundo plano puede leer
-    el snapshot directamente, sin copias defensivas, mientras la interfaz lo cambia
-    de forma atomica (se reemplaza la referencia, nunca se muta en el lugar).
+    AppConfig is immutable (frozen), so the background worker can read the
+    snapshot directly, without defensive copies, while the interface changes it
+    atomically (the reference is replaced, never mutated in place).
     """
 
     def __init__(self, config: AppConfig, path: Path | None = None) -> None:
@@ -276,10 +276,10 @@ class ConfigStore:
             save_config(self._config, self._path)
 
     def update(self, config: AppConfig) -> None:
-        """Persiste primero y solo entonces compromete en memoria.
+        """Persist first and only then commit in memory.
 
-        Si el guardado falla, ni el disco ni la memoria cambian: la app no queda
-        con una config viva distinta de la del archivo.
+        If the save fails, neither disk nor memory changes: the app is not left
+        with a live config different from the one in the file.
         """
         with self._lock:
             save_config(config, self._path)
@@ -290,6 +290,6 @@ def load_store(path: Path | None = None) -> ConfigStore:
     target = path or config_path()
     store = ConfigStore(load_config(target), target)
     if not target.exists():
-        # Persiste la config por defecto (primer arranque o tras respaldar una corrupta).
+        # Persist the default config (first startup or after backing up a corrupt one).
         store.save()
     return store

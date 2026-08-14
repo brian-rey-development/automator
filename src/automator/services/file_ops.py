@@ -1,4 +1,4 @@
-"""Operaciones seguras de archivos: espera de estabilidad, unicidad y movimiento."""
+"""Safe file operations: stability wait, uniqueness and moving."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ _LONG_PATH_UNC_PREFIX = "\\\\?\\UNC\\"
 
 
 def is_pdf(path: Path) -> bool:
-    """True si el archivo tiene extension .pdf (sin distinguir mayusculas)."""
+    """True if the file has a .pdf extension (case-insensitive)."""
     return path.suffix.lower() == ".pdf"
 
 
@@ -24,10 +24,10 @@ def wait_until_stable(
     timeout_s: float,
     poll_interval_s: float = _STABILITY_POLL_INTERVAL_S,
 ) -> bool:
-    """Espera a que el tamano del archivo se estabilice (descarga terminada).
+    """Waits for the file size to stabilize (download finished).
 
-    Devuelve True solo si el archivo dejo de crecer dentro del tiempo limite.
-    Devuelve False si expiro el tiempo mientras seguia cambiando o nunca aparecio.
+    Returns True only if the file stopped growing within the time limit.
+    Returns False if the time expired while it kept changing or it never appeared.
     """
     deadline = time.monotonic() + timeout_s
     last_size = -1
@@ -42,7 +42,7 @@ def wait_until_stable(
 
 
 def unique_destination(path: Path) -> Path:
-    """Devuelve una ruta que no existe, agregando ' (n)' si hay colision."""
+    """Returns a path that does not exist, appending ' (n)' on collision."""
     if not path.exists():
         return path
     parent, stem, suffix = path.parent, path.stem, path.suffix
@@ -55,11 +55,11 @@ def unique_destination(path: Path) -> Path:
 
 
 def move_file(source: Path, target_dir: Path, filename: str) -> Path:
-    """Mueve el archivo a la carpeta destino evitando sobrescrituras.
+    """Moves the file to the target folder avoiding overwrites.
 
-    Usa shutil.move para soportar movimientos entre discos distintos (C: a red).
-    El worker es unico y secuencial, por lo que no hay carrera real entre el
-    calculo del destino y el movimiento.
+    Uses shutil.move to support moves across different disks (C: to network).
+    The worker is single and sequential, so there is no real race between the
+    destination calculation and the move.
     """
     target_dir.mkdir(parents=True, exist_ok=True)
     target = unique_destination(target_dir / filename)
@@ -68,10 +68,10 @@ def move_file(source: Path, target_dir: Path, filename: str) -> Path:
 
 
 def copy_file(source: Path, target_dir: Path, filename: str) -> Path:
-    """Copia el archivo a la carpeta destino evitando sobrescrituras.
+    """Copies the file to the target folder avoiding overwrites.
 
-    Deja el original intacto. copy2 preserva las fechas del archivo, asi la
-    firma que usa el motor para no reprocesar se mantiene estable.
+    Leaves the original intact. copy2 preserves the file dates, so the signature
+    the engine uses to avoid reprocessing stays stable.
     """
     target_dir.mkdir(parents=True, exist_ok=True)
     target = unique_destination(target_dir / filename)
@@ -87,16 +87,16 @@ def _safe_size(path: Path) -> int:
 
 
 def _os_path(path: Path) -> str:
-    """Ruta lista para el sistema, con prefijo de rutas largas en Windows.
+    """System-ready path, with the long-path prefix on Windows.
 
-    Windows limita las rutas a 260 caracteres salvo que se use el prefijo
-    extendido, necesario para carpetas de proveedor muy anidadas.
+    Windows limits paths to 260 characters unless the extended prefix is used,
+    which is needed for deeply nested supplier folders.
     """
     text = str(path)
     if not sys.platform.startswith("win") or not os.path.isabs(text) or text.startswith(_LONG_PATH_PREFIX):
         return text
-    # Las rutas UNC (\\servidor\recurso) requieren la forma \\?\UNC\servidor\recurso,
-    # no un simple prefijo antepuesto (que produciria una ruta invalida).
+    # UNC paths (\\server\share) require the \\?\UNC\server\share form,
+    # not a simple prepended prefix (which would produce an invalid path).
     if text.startswith(_UNC_PREFIX):
         return _LONG_PATH_UNC_PREFIX + text[len(_UNC_PREFIX) :]
     return _LONG_PATH_PREFIX + text

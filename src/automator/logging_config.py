@@ -1,4 +1,4 @@
-"""Configuracion centralizada de logging con rotacion de archivos."""
+"""Centralized logging configuration with file rotation."""
 
 from __future__ import annotations
 
@@ -15,12 +15,12 @@ _BACKUP_COUNT = 5
 
 
 def log_location() -> Path:
-    """Ruta del archivo de log principal (para mostrarla al usuario ante un fallo)."""
+    """Path of the main log file (to show it to the user on a failure)."""
     return log_dir() / _LOG_FILENAME
 
 
 def setup_logging(level: int = logging.INFO) -> None:
-    """Configura logging a consola y a un archivo rotativo en la carpeta de logs."""
+    """Configure logging to the console and to a rotating file in the logs folder."""
     directory = log_dir()
     directory.mkdir(parents=True, exist_ok=True)
 

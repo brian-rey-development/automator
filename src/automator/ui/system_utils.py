@@ -1,4 +1,4 @@
-"""Utilidades del sistema operativo independientes de la plataforma."""
+"""Platform-independent operating system utilities."""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 def open_folder(path: Path) -> None:
-    """Abre una carpeta en el explorador de archivos del sistema."""
+    """Opens a folder in the system file explorer."""
     try:
         path.mkdir(parents=True, exist_ok=True)
         if sys.platform.startswith("win"):
-            os.startfile(str(path))  # type: ignore[attr-defined]  # Solo existe en Windows.
+            os.startfile(str(path))  # type: ignore[attr-defined]  # Only exists on Windows.
         elif sys.platform == "darwin":
             subprocess.run(["open", str(path)], check=False)
         else:
@@ -26,9 +26,9 @@ def open_folder(path: Path) -> None:
 
 
 def notify(title: str, message: str) -> None:
-    """Muestra un aviso del sistema, en best-effort: si no se puede, no hace nada.
+    """Shows a system notification, best-effort: if it cannot, it does nothing.
 
-    Nunca lanza ni bloquea: un aviso que falla no debe afectar el procesamiento.
+    Never raises or blocks: a notification that fails must not affect processing.
     """
     try:
         if sys.platform == "darwin":
@@ -36,7 +36,7 @@ def notify(title: str, message: str) -> None:
             subprocess.run(["osascript", "-e", script], check=False, timeout=5)
         elif sys.platform.startswith("win"):
             _notify_windows(title, message)
-        # En Linux no hay una via universal sin dependencias: se omite en silencio.
+        # On Linux there is no universal way without dependencies: silently skipped.
     except (OSError, subprocess.SubprocessError):
         logger.debug("No se pudo mostrar el aviso del sistema", exc_info=True)
 
@@ -46,7 +46,7 @@ def _applescript_quote(text: str) -> str:
 
 
 def _notify_windows(title: str, message: str) -> None:
-    # Aviso nativo via PowerShell (globo de la bandeja); best-effort, sin dependencias.
+    # Native notification via PowerShell (tray balloon); best-effort, no dependencies.
     safe_title = title.replace("'", "''")
     safe_message = message.replace("'", "''")
     script = (

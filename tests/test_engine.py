@@ -1,4 +1,4 @@
-"""Tests del motor de procesamiento (sin hilos ni watchdog reales)."""
+"""Tests for the processing engine (without real threads or watchdog)."""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ def test_failed_start_emits_error_and_leaves_no_running_engine(
 
     engine.start()
 
-    assert not engine.is_running  # No queda worker huerfano.
+    assert not engine.is_running  # No orphaned worker is left behind.
     assert any(event.type is EngineEventType.ERROR for event in events)
     assert all(event.type is not EngineEventType.STARTED for event in events)
 
@@ -91,10 +91,10 @@ def test_copy_mode_does_not_reprocess_seen_source(
 
     result = engine.process_now(source)
     assert result.outcome is ProcessOutcome.MOVED
-    assert source.exists()  # copiado: el original sigue en la entrada
+    assert source.exists()  # copied: the original stays in the input
 
     events.clear()
-    engine.process_existing()  # el rescan lo vuelve a ver, pero no debe reprocesarlo
+    engine.process_existing()  # the rescan sees it again, but it must not be reprocessed
     assert not any(event.type is EngineEventType.DETECTED for event in events)
     ledger.close()
 
@@ -107,6 +107,6 @@ def test_sink_errors_do_not_crash_engine(
 
     config = make_config()
     source = dummy_pdf("factura.pdf")
-    # No debe propagar la excepcion del sink.
+    # It must not propagate the sink exception.
     result = _engine(config, broken_sink, FACTURA_A_TEXT).process_now(source)
     assert result.outcome is ProcessOutcome.MOVED

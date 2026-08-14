@@ -1,4 +1,4 @@
-"""Orquestacion del procesamiento de un unico PDF de factura."""
+"""Orchestration of processing a single invoice PDF."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from automator.services.pdf_reader import extract_text
 
 logger = logging.getLogger(__name__)
 
-# Callable inyectables para poder testear sin PDFs ni configuracion global reales.
+# Injectable callables to allow testing without real PDFs or global configuration.
 TextExtractor = Callable[[Path], str]
 ConfigProvider = Callable[[], AppConfig]
 DuplicateCheck = Callable[[ParsedInvoice], bool]
@@ -27,7 +27,7 @@ def _never_duplicate(_invoice: ParsedInvoice) -> bool:
 
 
 class InvoiceProcessor:
-    """Procesa un PDF: lo lee, extrae datos, lo clasifica y lo archiva."""
+    """Processes a PDF: reads it, extracts data, classifies it and archives it."""
 
     def __init__(
         self,
@@ -84,8 +84,8 @@ class InvoiceProcessor:
                 "Duplicado: ya se habia archivado esta factura antes.",
             )
         if invoice.buyer_cuit is None:
-            # Se archiva igual (no se pierde), pero con un estado distinto para que el
-            # usuario vea que la sociedad compradora no se pudo identificar.
+            # It is archived anyway (not lost), but with a distinct status so the
+            # user sees that the buyer society could not be identified.
             return self._archive(
                 source,
                 config,
@@ -126,7 +126,7 @@ class InvoiceProcessor:
         return _result(source, outcome, destination, invoice, message)
 
     def _quarantine(self, source: Path, config: AppConfig, message: str) -> ProcessResult:
-        # En modo simulacion o si el archivo ya no esta, no se mueve nada.
+        # In dry-run mode or if the file is no longer there, nothing is moved.
         if config.dry_run or not source.exists():
             return _result(source, ProcessOutcome.ERROR, None, None, message)
         try:
@@ -138,11 +138,11 @@ class InvoiceProcessor:
 
 
 def _is_reliable(invoice: ParsedInvoice, config: AppConfig) -> bool:
-    """Confiable si tiene numero, se detecto el proveedor y no es una sociedad propia.
+    """Reliable if it has a number, the supplier was detected and it is not an own society.
 
-    Si el proveedor no se detecto (centinela) se envia a revision para no archivarlo
-    bajo un nombre inventado. Si coincide con una sociedad configurada, es senal de
-    que se leyo al comprador en lugar del emisor: tambien va a revision.
+    If the supplier was not detected (sentinel) it goes to review so it is not archived
+    under a made-up name. If it matches a configured society, it is a sign that the buyer
+    was read instead of the issuer: it also goes to review.
     """
     if not invoice.has_number or not invoice.has_supplier:
         return False
@@ -150,7 +150,7 @@ def _is_reliable(invoice: ParsedInvoice, config: AppConfig) -> bool:
 
 
 def _place(source: Path, target_dir: Path, filename: str, config: AppConfig) -> Path:
-    """Coloca el archivo en su destino: copia (deja el original) o mueve, segun la config."""
+    """Places the file at its destination: copy (leaves the original) or move, per the config."""
     if config.copy_files:
         return file_ops.copy_file(source, target_dir, filename)
     return file_ops.move_file(source, target_dir, filename)

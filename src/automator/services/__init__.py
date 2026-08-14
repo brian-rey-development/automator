@@ -1,1 +1,1 @@
-"""Servicios con efectos secundarios: lectura de PDF, IO de archivos y monitoreo."""
+"""Services with side effects: PDF reading, file IO and folder monitoring."""

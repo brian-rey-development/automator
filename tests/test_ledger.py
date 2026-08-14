@@ -1,4 +1,4 @@
-"""Tests del historial de auditoria en SQLite."""
+"""Tests for the SQLite audit history."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def test_source_seen_tracks_processed_files(tmp_path: Path) -> None:
     assert not ledger.source_seen(signature)
     ledger.mark_source_seen(signature)
     assert ledger.source_seen(signature)
-    ledger.mark_source_seen(signature)  # idempotente, no debe fallar
+    ledger.mark_source_seen(signature)  # idempotent, must not fail
     assert ledger.source_seen(signature)
     ledger.close()
 
@@ -51,7 +51,7 @@ def test_identity_exists_only_for_archived(tmp_path: Path) -> None:
     assert invoice.identity is not None
     ledger.record(_result(ProcessOutcome.MOVED, tmp_path / "a.pdf", invoice))
     assert ledger.identity_exists(invoice.identity)
-    # Una revision no cuenta como archivada, no debe marcar duplicado.
+    # A review does not count as archived, it must not flag a duplicate.
     other = _invoice(number="00000999")
     assert other.identity is not None
     ledger.record(_result(ProcessOutcome.NEEDS_REVIEW, tmp_path / "r.pdf", other))
@@ -67,7 +67,7 @@ def test_last_undoable_and_mark_reverted(tmp_path: Path) -> None:
     assert record is not None
     assert record.outcome is ProcessOutcome.MOVED
     ledger.mark_reverted(record.id)
-    assert ledger.last_undoable() is None  # Ya no hay nada para deshacer.
+    assert ledger.last_undoable() is None  # There is nothing left to undo.
     ledger.close()
 
 
@@ -77,5 +77,5 @@ def test_ledger_persists_across_reopen(tmp_path: Path) -> None:
     first.record(_result(ProcessOutcome.MOVED, tmp_path / "a.pdf", _invoice()))
     first.close()
     second = Ledger(path)
-    assert len(second.recent()) == 1  # El historial sobrevive al cierre.
+    assert len(second.recent()) == 1  # The history survives the close.
     second.close()

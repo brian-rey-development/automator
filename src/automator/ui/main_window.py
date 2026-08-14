@@ -1,7 +1,7 @@
-"""Ventana principal: sidebar de marca, panel de monitoreo y configuracion.
+"""Main window: brand sidebar, monitoring panel and configuration.
 
-La interfaz esta pensada para alguien sin experiencia: etiquetas claras, textos
-de ayuda debajo de cada campo y selectores de carpeta en todos lados.
+The interface is designed for someone without experience: clear labels, help
+text below each field and folder pickers everywhere.
 """
 
 from __future__ import annotations
@@ -33,14 +33,14 @@ from automator.ui.theme import CORNER_RADIUS, Palette, configure_table_style, cr
 logger = logging.getLogger(__name__)
 
 _POLL_INTERVAL_MS = 150
-_PENDING_POLL_MS = 5000  # Relee las carpetas de pendientes cada 5s.
+_PENDING_POLL_MS = 5000  # Re-reads the pending folders every 5s.
 _MAX_LOG_ROWS = 500
 _CUIT_LENGTH = 11
 
-# Glyphs de icono: heredan el color del texto del boton y no dependen de assets.
-_ICON_RETRY = "↻"  # flecha circular: reintentar
-_ICON_UNDO = "↶"  # flecha de retorno: deshacer
-_ICON_REFRESH = "⟳"  # flecha circular amplia: actualizar
+# Icon glyphs: inherit the button text color and do not depend on assets.
+_ICON_RETRY = "↻"  # circular arrow: retry
+_ICON_UNDO = "↶"  # return arrow: undo
+_ICON_REFRESH = "⟳"  # wide circular arrow: refresh
 
 _OUTCOME_LABELS: dict[ProcessOutcome, str] = {
     ProcessOutcome.MOVED: "Archivado",
@@ -71,7 +71,7 @@ _STAT_CARDS = (
 
 
 class MainWindow(ctk.CTkFrame):
-    """Frame raiz que contiene toda la interfaz y coordina el motor."""
+    """Root frame that contains the whole interface and coordinates the engine."""
 
     def __init__(self, master: ctk.CTk, store: ConfigStore, first_run: bool = False) -> None:
         super().__init__(master, fg_color=Palette.BG, corner_radius=0)
@@ -82,7 +82,7 @@ class MainWindow(ctk.CTkFrame):
         self._engine = ProcessingEngine(store.get, self._events.put, ledger=self._ledger)
         self._societies: list[SocietyMapping] = []
         self._counts = {"detected": 0, "archived": 0, "review": 0, "error": 0}
-        self._last_pending = 0  # Para avisar solo cuando aumentan los pendientes.
+        self._last_pending = 0  # To notify only when the pending count grows.
         self._stat_values: dict[str, tk.StringVar] = {}
         self._nav_items: dict[str, tuple[ctk.CTkFrame, ctk.CTkButton]] = {}
 
@@ -97,7 +97,7 @@ class MainWindow(ctk.CTkFrame):
         self.after(_POLL_INTERVAL_MS, self._poll_events)
         self._poll_pending()
         if self._first_run:
-            self.after(250, self._run_onboarding)  # Setup guiado tras dibujar la ventana.
+            self.after(250, self._run_onboarding)  # Guided setup after drawing the window.
 
     def _run_onboarding(self) -> None:
         dialog = OnboardingDialog(self, self._store.get())
@@ -125,14 +125,14 @@ class MainWindow(ctk.CTkFrame):
         self._copy_var = tk.BooleanVar()
         self._timeout_var = tk.StringVar()
         self._template_var = tk.StringVar()
-        self._state_var = tk.StringVar(value="Detenido")  # Estado corto para el pill del sidebar.
-        self._detail_var = tk.StringVar(value="Listo para empezar")  # Detalle largo para el header.
-        self._pending_var = tk.StringVar()  # Cantidad de archivos que esperan revision.
+        self._state_var = tk.StringVar(value="Detenido")  # Short status for the sidebar pill.
+        self._detail_var = tk.StringVar(value="Listo para empezar")  # Long detail for the header.
+        self._pending_var = tk.StringVar()  # Number of files waiting for review.
 
-    # --- Fabricas de widgets reutilizables ---------------------------------
+    # --- Reusable widget factories -----------------------------------------
 
     def _primary_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
-        # Primario: color de marca (lima). La accion protagonista de cada vista.
+        # Primary: brand color (lime). The lead action of each view.
         return ctk.CTkButton(
             parent,
             text=text,
@@ -146,7 +146,7 @@ class MainWindow(ctk.CTkFrame):
         )
 
     def _secondary_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
-        # Secundario: oscuro con texto blanco. Fuerte pero por debajo del primario.
+        # Secondary: dark with white text. Strong but below the primary.
         return ctk.CTkButton(
             parent,
             text=text,
@@ -160,7 +160,7 @@ class MainWindow(ctk.CTkFrame):
         )
 
     def _ghost_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
-        # Terciario: gris apagado que se enciende (color + fondo sutil) al pasar el mouse.
+        # Tertiary: muted gray that lights up (color + subtle background) on hover.
         button = ctk.CTkButton(
             parent,
             text=text,
@@ -179,7 +179,7 @@ class MainWindow(ctk.CTkFrame):
     def _hint(self, parent: tk.Misc, text: str) -> ctk.CTkLabel:
         return ctk.CTkLabel(parent, text=text, font=self._f_hint, text_color=Palette.MUTED, anchor="w", justify="left")
 
-    # --- Estructura general -------------------------------------------------
+    # --- General structure --------------------------------------------------
 
     def _build_layout(self) -> None:
         self.grid_columnconfigure(1, weight=1)
@@ -257,8 +257,8 @@ class MainWindow(ctk.CTkFrame):
         )
 
     def _show(self, key: str) -> None:
-        # Solo una vista montada a la vez: evita solapamientos de render entre el
-        # frame de monitoreo y el scrollable de configuracion.
+        # Only one view mounted at a time: avoids render overlaps between the
+        # monitoring frame and the configuration scrollable.
         for name, view in self._views.items():
             if name == key:
                 view.grid(row=0, column=0, sticky="nsew", padx=28, pady=24)
@@ -274,7 +274,7 @@ class MainWindow(ctk.CTkFrame):
                 text_color="#ffffff" if active else Palette.MUTED_ON_DARK,
             )
 
-    # --- Vista Monitor ------------------------------------------------------
+    # --- Monitor view -------------------------------------------------------
 
     def _build_monitor_view(self) -> None:
         self._monitor_view.grid_columnconfigure(0, weight=1)
@@ -328,8 +328,8 @@ class MainWindow(ctk.CTkFrame):
         )
 
     def _build_pending_banner(self) -> None:
-        # Verdad persistente leida de las carpetas: aunque se pierda un evento de la
-        # UI, el usuario ve que hay archivos esperando su atencion.
+        # Persistent truth read from the folders: even if a UI event is lost, the
+        # user sees that there are files waiting for their attention.
         banner = ctk.CTkFrame(self._monitor_view, fg_color=Palette.ROW_WARNING, corner_radius=CORNER_RADIUS)
         banner.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(banner, textvariable=self._pending_var, font=self._f_body, text_color=Palette.WARNING).grid(
@@ -349,7 +349,7 @@ class MainWindow(ctk.CTkFrame):
             border_color=Palette.BORDER,
             command=self._open_review,
         ).grid(row=0, column=1, sticky="e", padx=(0, 12), pady=8)
-        self._pending_banner = banner  # Se muestra/oculta segun haya pendientes.
+        self._pending_banner = banner  # Shown/hidden depending on whether there are pendings.
 
     def _build_activity_log(self) -> None:
         card = ctk.CTkFrame(self._monitor_view, fg_color=Palette.SURFACE, corner_radius=CORNER_RADIUS)
@@ -382,7 +382,7 @@ class MainWindow(ctk.CTkFrame):
         self._empty_state = self._build_empty_state(container)
 
     def _build_empty_state(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
-        # Cubre la tabla vacia con un mensaje amable en vez de un vacio blanco.
+        # Covers the empty table with a friendly message instead of a blank void.
         frame = ctk.CTkFrame(parent, fg_color=Palette.SURFACE, corner_radius=0)
         frame.grid(row=0, column=0, sticky="nsew")
         inner = ctk.CTkFrame(frame, fg_color="transparent")
@@ -408,7 +408,7 @@ class MainWindow(ctk.CTkFrame):
             tree.heading(column, text=text)
             tree.column(column, width=width, anchor="w", stretch=(column == "destino"))
 
-    # --- Vista Historial ----------------------------------------------------
+    # --- History view -------------------------------------------------------
 
     def _build_history_view(self) -> None:
         self._history_view.grid_columnconfigure(0, weight=1)
@@ -428,7 +428,7 @@ class MainWindow(ctk.CTkFrame):
     def _build_history_toolbar(self) -> None:
         bar = ctk.CTkFrame(self._history_view, fg_color="transparent")
         bar.grid(row=1, column=0, sticky="ew", pady=(0, 16))
-        # Jerarquia: accion protagonista a la izquierda, refrescar como control sutil a la derecha.
+        # Hierarchy: lead action on the left, refresh as a subtle control on the right.
         self._retry_btn = self._primary_button(bar, f"{_ICON_RETRY}  Reintentar pendientes", self._reprocess_pending)
         self._retry_btn.configure(height=40)
         self._retry_btn.pack(side="left", padx=(0, 10))
@@ -437,7 +437,7 @@ class MainWindow(ctk.CTkFrame):
         self._ghost_button(bar, f"{_ICON_REFRESH}  Actualizar", self._refresh_history).pack(side="right")
 
     def _update_history_actions(self) -> None:
-        # Deshabilita lo que no se puede usar ahora: nada que deshacer, o nada pendiente.
+        # Disables what cannot be used now: nothing to undo, or nothing pending.
         running = self._engine.is_running
         can_undo = not running and self._ledger is not None and self._ledger.last_undoable() is not None
         self._undo_btn.configure(state="normal" if can_undo else "disabled")
@@ -515,7 +515,7 @@ class MainWindow(ctk.CTkFrame):
 
         _run_async(run)
 
-    # --- Vista Configuracion ------------------------------------------------
+    # --- Configuration view -------------------------------------------------
 
     def _build_config_view(self) -> None:
         self._config_view.grid_columnconfigure(0, weight=1)
@@ -738,7 +738,7 @@ class MainWindow(ctk.CTkFrame):
         self._ghost_button(left, "Abrir carpeta de logs", self._open_logs).pack(side="left")
         self._primary_button(bar, "Guardar configuracion", self._save_config).grid(row=0, column=1, sticky="e")
 
-    # --- Carga y recoleccion de configuracion ------------------------------
+    # --- Configuration loading and collection -------------------------------
 
     def _load_config_into_widgets(self) -> None:
         config = self._store.get()
@@ -791,7 +791,7 @@ class MainWindow(ctk.CTkFrame):
             copy_files=self._copy_var.get(),
         )
 
-    # --- Acciones de sociedades --------------------------------------------
+    # --- Society actions ----------------------------------------------------
 
     def _add_society(self) -> None:
         dialog = SocietyDialog(self)
@@ -811,7 +811,7 @@ class MainWindow(ctk.CTkFrame):
         del self._societies[index]
         self._refresh_societies_list()
 
-    # --- Control del motor --------------------------------------------------
+    # --- Engine control -----------------------------------------------------
 
     def _toggle(self) -> None:
         if self._engine.is_running:
@@ -866,11 +866,11 @@ class MainWindow(ctk.CTkFrame):
         self._state_var.set("En ejecucion" if running else "Detenido")
         if not running:
             self._detail_var.set("Monitoreo detenido")
-        # Deshacer depende de que el monitor este detenido; refleja el cambio al instante.
+        # Undo depends on the monitor being stopped; reflect the change instantly.
         if hasattr(self, "_undo_btn"):
             self._update_history_actions()
 
-    # --- Pickers y navegacion ----------------------------------------------
+    # --- Pickers and navigation ---------------------------------------------
 
     def _pick_folder(self, var: tk.StringVar) -> None:
         chosen = filedialog.askdirectory(parent=self, title="Selecciona una carpeta")
@@ -889,10 +889,10 @@ class MainWindow(ctk.CTkFrame):
     def _open_logs(self) -> None:
         open_folder(log_dir())
 
-    # --- Pendientes de revision (verdad leida de las carpetas) --------------
+    # --- Review pending (truth read from the folders) -----------------------
 
     def _poll_pending(self) -> None:
-        # Se reprograma siempre (finally) para que un error de conteo no corte el aviso.
+        # Always reschedules (finally) so a counting error does not stop the notifications.
         try:
             count = self._count_pending()
             if count > 0:
@@ -907,7 +907,7 @@ class MainWindow(ctk.CTkFrame):
             self.after(_PENDING_POLL_MS, self._poll_pending)
 
     def _maybe_notify_pending(self, count: int) -> None:
-        # Avisa solo cuando aparecen nuevos pendientes y el usuario lo habilito.
+        # Notifies only when new pendings appear and the user enabled it.
         if count > self._last_pending and self._store.get().notify:
             _run_async(lambda: notify("Automator", f"{count} factura(s) necesitan tu revision"))
         self._last_pending = count
@@ -917,11 +917,11 @@ class MainWindow(ctk.CTkFrame):
         folders = (config.review_folder, config.quarantine_folder, config.unknown_folder)
         return sum(_count_pdfs(folder) for folder in folders)
 
-    # --- Bucle de eventos del motor ----------------------------------------
+    # --- Engine event loop --------------------------------------------------
 
     def _poll_events(self) -> None:
-        # El bucle se reprograma siempre (finally): un evento defectuoso no puede
-        # dejar a la UI sin procesar mas eventos del motor.
+        # The loop always reschedules (finally): a faulty event cannot leave the
+        # UI unable to process further engine events.
         try:
             while True:
                 try:
@@ -953,8 +953,8 @@ class MainWindow(ctk.CTkFrame):
 
     def _on_error(self, event: EngineEvent) -> None:
         if event.path is None:
-            # Error sin archivo asociado (arranque fallido o carpeta ilegible en
-            # ejecucion): se avisa y se refleja el estado real del motor.
+            # Error with no associated file (failed startup or unreadable folder
+            # while running): notify and reflect the real engine state.
             self._set_running(self._engine.is_running)
             messagebox.showerror("Automator", event.message)
             return
@@ -972,7 +972,7 @@ class MainWindow(ctk.CTkFrame):
         )
 
     def _append_log(self, filename: str, voucher: str, status: str, tag: str, destination: str) -> None:
-        self._empty_state.grid_remove()  # Ya hay actividad: se descubre la tabla.
+        self._empty_state.grid_remove()  # There is activity now: reveal the table.
         now = dt.datetime.now().strftime("%H:%M:%S")
         self._log.insert("", 0, values=(now, filename, voucher, status, destination), tags=(tag,))
         children = self._log.get_children()
@@ -984,9 +984,9 @@ class MainWindow(ctk.CTkFrame):
         self._stat_values[key].set(str(self._counts[key]))
 
     def on_close(self) -> None:
-        # Se detiene de forma sincronica para que el worker termine el archivo en
-        # curso antes de cerrar: abandonar un movimiento a mitad podria dejar un
-        # PDF corrupto en el destino. stop() ya limita la espera con un timeout.
+        # Stops synchronously so the worker finishes the current file before
+        # closing: abandoning a move halfway could leave a corrupt PDF at the
+        # destination. stop() already bounds the wait with a timeout.
         self._engine.stop()
         if self._ledger is not None:
             self._ledger.close()
@@ -1015,7 +1015,7 @@ def _format_validation_error(exc: ValidationError) -> str:
 
 
 def _format_cuit(cuit: str) -> str:
-    # Muestra el CUIT de 11 digitos como XX-XXXXXXXX-X; si no, tal cual.
+    # Shows the 11-digit CUIT as XX-XXXXXXXX-X; otherwise, as-is.
     return f"{cuit[:2]}-{cuit[2:10]}-{cuit[10:]}" if len(cuit) == _CUIT_LENGTH else cuit
 
 
@@ -1040,7 +1040,7 @@ def _history_tag(record: LedgerRecord) -> str:
 
 
 def _open_ledger() -> Ledger | None:
-    # Si el historial no se puede abrir, la app funciona igual (sin historial/undo/dedup).
+    # If the history cannot be opened, the app still works (no history/undo/dedup).
     try:
         return Ledger(ledger_path())
     except (OSError, sqlite3.Error):

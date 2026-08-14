@@ -1,4 +1,4 @@
-"""Tests de extraccion de datos de facturas (nucleo del sistema)."""
+"""Tests for invoice data extraction (the core of the system)."""
 
 from __future__ import annotations
 
@@ -44,8 +44,8 @@ def test_supports_combined_number_format() -> None:
 
 
 def test_supplier_unknown_when_no_razon_social_label() -> None:
-    # Sin la etiqueta "Razon Social" no se adivina con la primera linea: se marca
-    # como desconocido para que el procesador lo envie a revision.
+    # Without the "Razon Social" label it is not guessed from the first line: it is
+    # flagged as unknown so the processor sends it to review.
     invoice = parse_invoice(NO_RAZON_SOCIAL_TEXT)
     assert invoice.supplier == "PROVEEDOR_DESCONOCIDO"
     assert not invoice.has_supplier
@@ -69,7 +69,7 @@ def test_single_known_cuit_is_not_ambiguous() -> None:
 
 
 def test_two_known_cuits_are_marked_ambiguous() -> None:
-    # Factura entre dos sociedades propias: no se puede decidir el comprador.
+    # Invoice between two of our own societies: the buyer cannot be decided.
     text = f"FACTURA\nCod. 01\nCUIT: {CUIT_ONE}\nCUIT: {CUIT_TWO}\n"
     invoice = parse_invoice(text, [CUIT_ONE, CUIT_TWO])
     assert invoice.buyer_cuit is None
@@ -106,13 +106,13 @@ def test_afip_code_maps_to_voucher(code: str, expected_label: str) -> None:
 
 
 def test_parser_never_raises_on_garbage() -> None:
-    # Robustez: texto arbitrario no debe romper el parser.
+    # Robustness: arbitrary text must not break the parser.
     invoice = parse_invoice("\x00\x01 ??? \n---\n123")
     assert invoice.voucher.label == "FC A"
 
 
 def test_afip_code_ignores_long_numbers_like_cae() -> None:
-    # Un CAE largo tras "Codigo" no debe interpretarse como codigo de comprobante.
+    # A long CAE after "Codigo" must not be interpreted as a voucher code.
     text = "FACTURA\nCodigo de Autorizacion (CAE): 71234567890123\nCod. 06\nComp. Nro: 0001-00000001\n"
     invoice = parse_invoice(text)
     assert invoice.voucher.label == "FC B"

@@ -1,79 +1,90 @@
-# Funcionalidades
+# Features
 
-Todo es configurable desde la interfaz. La app no trae ninguna empresa ni CUIT
-precargado: en el primer arranque un asistente ayuda a definir lo minimo.
+Everything is configurable from the interface. The app ships with no company or
+CUIT preloaded: on first launch a wizard helps you define the bare minimum.
 
-## Clasificacion de facturas
+## Invoice classification
 
-- **Deteccion de comprobante** por codigo AFIP (01 = FC A, 06 = FC B, 08 = NC B,
-  etc.), con respaldo por texto cuando el codigo no aparece.
-- **Numero y punto de venta**, tolerando el layout separado y el combinado.
-- **Proveedor** desde la etiqueta "Razon Social". Si no se detecta con confianza,
-  la factura va a revision (no se archiva bajo un nombre inventado).
-- **Sociedad compradora** por CUIT, contra las sociedades configuradas.
-- **Fecha de emision**, usada por la plantilla de carpetas.
+- **Voucher detection** by AFIP code (01 = FC A, 06 = FC B, 08 = NC B, etc.),
+  with a text-based fallback when the code is not present.
+- **Number and point of sale**, tolerating both the split and the combined
+  layout.
+- **Supplier** from the "Razon Social" label. If it is not detected with
+  confidence, the invoice goes to review (it is not filed under an invented
+  name).
+- **Buyer company** by CUIT, against the configured companies.
+- **Issue date**, used by the folder template.
 
-## Ruteo seguro
+## Safe routing
 
-Cada factura termina en un lugar segun que tan confiable fue la lectura:
+Each invoice ends up in a place that depends on how reliable the reading was:
 
-| Situacion | Destino | Estado |
+| Situation | Destination | Status |
 |---|---|---|
-| Se detecto la sociedad compradora | Carpeta de la sociedad | Archivado |
-| No se detecto el CUIT comprador | `_SIN_CLASIFICAR` | Sin clasificar |
-| Ya se habia archivado (duplicado) | `_DUPLICADOS` | Duplicado |
-| Datos incompletos o proveedor dudoso | `_PARA_REVISAR` | Revisar |
-| Aparecen varias sociedades propias | `_PARA_REVISAR` | Revisar |
-| PDF ilegible o error | `_ERRORES` | Cuarentena |
+| Buyer company detected | Company folder | Filed |
+| Buyer CUIT not detected | `_SIN_CLASIFICAR` | Unclassified |
+| Already filed before (duplicate) | `_DUPLICADOS` | Duplicate |
+| Incomplete data or doubtful supplier | `_PARA_REVISAR` | Review |
+| Several of your own companies appear | `_PARA_REVISAR` | Review |
+| Unreadable PDF or error | `_ERRORES` | Quarantine |
 
-El principio es **nunca archivar mal en silencio**: ante la duda, a revision.
+The guiding principle is **never file incorrectly in silence**: when in doubt,
+send it to review.
 
-## Estructura de carpetas configurable
+## Configurable folder structure
 
-Dentro de la carpeta de cada sociedad se aplica una plantilla con tokens:
+Inside each company's folder a template with tokens is applied:
 
-- `{supplier}` - razon social del proveedor
-- `{society}` - carpeta de la sociedad
-- `{year}` `{month}` `{day}` - de la fecha de emision (o `sin_fecha`)
+- `{supplier}` - supplier company name
+- `{society}` - company folder
+- `{year}` `{month}` `{day}` - from the issue date (or `sin_fecha`)
 
-Ejemplos: `{supplier}` (por defecto) archiva por proveedor;
-`{year}/{month}/{supplier}` archiva por ano y mes.
+Examples: `{supplier}` (the default) files by supplier;
+`{year}/{month}/{supplier}` files by year and month.
 
-## Historial de auditoria
+## Audit history
 
-Todo lo procesado se guarda en SQLite y sobrevive al cierre de la app. La vista
-"Historial" lo muestra con su resultado y destino. Sobre esta base:
+Everything processed is stored in SQLite and survives closing the app. The
+"History" view shows it with its result and destination. On top of this:
 
-- **Deshacer**: devuelve el ultimo movimiento a la carpeta de entrada (con el
-  monitor detenido, para no reprocesarlo al instante).
-- **Reintentar pendientes**: reprocesa lo que quedo en revision y cuarentena,
-  util despues de agregar una sociedad o corregir la configuracion.
+- **Undo**: returns the last move to the input folder (with the monitor
+  stopped, so it is not reprocessed immediately).
+- **Retry pending**: reprocesses whatever was left in review and quarantine,
+  useful after adding a company or fixing the configuration.
 
-## Deteccion de duplicados
+## Duplicate detection
 
-Una factura se identifica por `proveedor | numero | tipo`. Si ya fue archivada
-antes (segun el historial), la nueva copia va a `_DUPLICADOS` en vez de
-duplicarse. Util cuando AFIP permite re-descargar el mismo comprobante.
+An invoice is identified by `supplier | number | type`. If it was already filed
+before (according to the history), the new copy goes to `_DUPLICADOS` instead of
+being duplicated. Useful when AFIP allows re-downloading the same voucher.
 
-## Robustez
+## Copy instead of move
 
-- Espera a que termine la descarga antes de mover (evita archivos a medio bajar).
-- Movimientos atomicos y sin sobrescribir (agrega ` (2)`, ` (3)`, ...).
-- Cuarentena de ilegibles sin frenar el monitor; reescaneo periodico de la
-  carpeta por si el watcher pierde un evento.
-- Configuracion validada e inmutable, guardada de forma atomica, con respaldo si
-  el archivo se corrompe (nunca deja la app sin abrir).
+An option to copy each invoice to its destination and leave the original in the
+input folder, instead of moving it. The app records a stable signature (path,
+size, modified time) of every processed source in the audit history (SQLite), so
+the watcher and the periodic rescan never re-copy a file that has already been
+handled. Move is the default and drains the input folder as before.
 
-## Avisos y utilidades
+## Robustness
 
-- **Aviso persistente de pendientes** leido de las carpetas (no depende de un
-  unico evento de la interfaz).
-- **Notificacion del sistema** opcional cuando aparecen nuevos pendientes.
-- **Modo de prueba** (dry-run): muestra que haria sin mover nada.
-- Botones para abrir las carpetas de entrada, salida, revision y logs.
+- Waits for the download to finish before moving (avoids half-downloaded files).
+- Atomic moves with no overwriting (appends ` (2)`, ` (3)`, ...).
+- Quarantines unreadable files without stopping the monitor; periodic rescan of
+  the folder in case the watcher misses an event.
+- Validated, immutable configuration, saved atomically, with a fallback if the
+  file is corrupted (never leaves the app unable to open).
 
-## Primer arranque
+## Notices and utilities
 
-Al abrir la app por primera vez, un asistente pide lo minimo (carpeta de entrada,
-carpeta de salida y, opcionalmente, una primera empresa). Todo se puede cambiar
-despues desde Configuracion.
+- **Persistent pending notice** read from the folders (it does not depend on a
+  single interface event).
+- **System notification** (optional) when new pending items appear.
+- **Test mode** (dry-run): shows what it would do without moving anything.
+- Buttons to open the input, output, review and log folders.
+
+## First launch
+
+When you open the app for the first time, a wizard asks for the bare minimum
+(input folder, output folder and, optionally, a first company). Everything can
+be changed later from Configuration.

@@ -1,4 +1,4 @@
-"""Tests de resolucion de carpeta destino."""
+"""Tests for destination folder resolution."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def _invoice(supplier: str, issue_date: date | None = None) -> ParsedInvoice:
 def test_destination_joins_base_with_sanitized_supplier() -> None:
     base = Path("/salida/EMPRESA")
     result = destination_dir(_invoice("ACME S.A."), base)
-    # Windows no admite carpetas terminadas en punto: se elimina el punto final.
+    # Windows does not allow folders ending in a dot: the trailing dot is removed.
     assert result == base / "ACME S.A"
 
 

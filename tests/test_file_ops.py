@@ -1,4 +1,4 @@
-"""Tests de operaciones de archivos."""
+"""Tests for file operations."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from automator.services.file_ops import copy_file, is_pdf, move_file, unique_des
 
 
 def _force_windows(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Simula Windows en macOS/Linux: plataforma win y rutas tratadas como absolutas.
+    # Simulate Windows on macOS/Linux: win platform and paths treated as absolute.
     monkeypatch.setattr(file_ops.sys, "platform", "win32")
     monkeypatch.setattr(file_ops.os.path, "isabs", lambda _text: True)
 
@@ -23,7 +23,7 @@ def test_os_path_prefixes_long_local_path(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_os_path_uses_unc_form_for_network_share(monkeypatch: pytest.MonkeyPatch) -> None:
     _force_windows(monkeypatch)
-    # UNC requiere \\?\UNC\servidor\recurso, no un prefijo antepuesto crudo.
+    # UNC requires \\?\UNC\servidor\recurso, not a raw prepended prefix.
     assert file_ops._os_path(Path("\\\\servidor\\recurso\\f.pdf")) == "\\\\?\\UNC\\servidor\\recurso\\f.pdf"
 
 

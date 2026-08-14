@@ -1,4 +1,4 @@
-"""Tests de orquestacion del procesamiento de PDFs (integracion sin PDFs reales)."""
+"""Tests for PDF processing orchestration (integration without real PDFs)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from tests.conftest import CUIT_ONE, CUIT_TWO, FACTURA_A_TEXT
 
 
 def _processor(config: AppConfig, text: str) -> InvoiceProcessor:
-    # Se inyecta un extractor falso para no depender de PDFs reales.
+    # A fake extractor is injected to avoid depending on real PDFs.
     return InvoiceProcessor(lambda: config, extractor=lambda _path: text)
 
 
@@ -34,8 +34,8 @@ def test_moves_invoice_to_matching_society_folder(
 def test_unknown_cuit_goes_to_unclassified_folder(
     make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
 ) -> None:
-    # Se archiva igual, pero con outcome distinto (no MOVED) para que el usuario
-    # vea que no se identifico la sociedad compradora.
+    # It is archived anyway, but with a different outcome (not MOVED) so the user
+    # sees that the buying society was not identified.
     config = make_config()
     source = dummy_pdf("otro.pdf")
     text = "FACTURA\nCod. 01\nRazon Social: X S.A.\nComp. Nro: 0001-00000001\n"
@@ -64,7 +64,7 @@ def test_copy_mode_keeps_original_and_places_copy(
     expected = folder / "PROVEEDOR EJEMPLO SRL FC A 0001-00000123.pdf"
     assert result.outcome is ProcessOutcome.MOVED
     assert expected.exists()
-    assert source.exists()  # el original se conserva en la carpeta de entrada
+    assert source.exists()  # the original is kept in the input folder
 
 
 def test_copy_mode_quarantine_keeps_original(
@@ -72,7 +72,7 @@ def test_copy_mode_quarantine_keeps_original(
 ) -> None:
     config = make_config(copy_files=True)
     source = dummy_pdf("ilegible.pdf")
-    result = _processor(config, "").process(source)  # texto vacio: PDF ilegible
+    result = _processor(config, "").process(source)  # empty text: unreadable PDF
     assert result.outcome is ProcessOutcome.QUARANTINED
     assert result.destination is not None
     assert result.destination.exists()
@@ -134,7 +134,7 @@ def test_duplicate_invoice_goes_to_duplicates_folder(
 def test_ambiguous_intercompany_invoice_goes_to_review(
     make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path], tmp_path: Path
 ) -> None:
-    # Aparecen dos sociedades propias: no se puede decidir la compradora, va a revision.
+    # Two of our own societies appear: the buyer cannot be decided, it goes to review.
     config = make_config(
         societies=(
             SocietyMapping(cuit=CUIT_ONE, name="COMPRADORA UNO SA", folder=tmp_path / "salida" / "A"),
@@ -154,7 +154,7 @@ def test_ambiguous_intercompany_invoice_goes_to_review(
 def test_supplier_equal_to_society_goes_to_review(
     make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
 ) -> None:
-    # Si el proveedor detectado es la propia sociedad, se leyo al comprador: a revisar.
+    # If the detected supplier is our own society, the buyer was read: send to review.
     config = make_config()
     source = dummy_pdf("comprador.pdf")
     text = "FACTURA\nCod. 01\nRazon Social: COMPRADORA UNO SA\nComp. Nro: 0001-00000009\n"

@@ -1,4 +1,4 @@
-"""Tests del modelo de configuracion y su persistencia."""
+"""Tests for the configuration model and its persistence."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def test_cuit_with_wrong_length_is_rejected() -> None:
 
 
 def test_cuit_with_bad_check_digit_is_rejected() -> None:
-    # 11 digitos pero digito verificador incorrecto (el valido termina en 8).
+    # 11 digits but an incorrect check digit (the valid one ends in 8).
     with pytest.raises(ValidationError):
         SocietyMapping(cuit="30111111110", name="X", folder=Path("/x"))
 
@@ -74,9 +74,9 @@ def test_ensure_folders_creates_all_targets(tmp_path: Path) -> None:
 def test_config_snapshot_is_immutable() -> None:
     store = ConfigStore(default_config())
     snapshot = store.get()
-    with pytest.raises(ValidationError):  # frozen: no se puede mutar el snapshot.
+    with pytest.raises(ValidationError):  # frozen: the snapshot cannot be mutated.
         snapshot.dry_run = True  # type: ignore[misc]
-    assert store.get().dry_run is False  # El store sigue intacto.
+    assert store.get().dry_run is False  # The store stays intact.
 
 
 def test_stability_timeout_is_bounded() -> None:
@@ -109,7 +109,7 @@ def test_corrupt_config_falls_back_to_default_and_is_backed_up(tmp_path: Path) -
     path.write_text('{"esquema": "viejo", "otro": 1}', encoding="utf-8")
     loaded = load_config(path)
     assert loaded == default_config()
-    # El respaldo lleva timestamp para no pisar diagnosticos previos.
+    # The backup carries a timestamp so it does not overwrite prior diagnostics.
     assert list(tmp_path.glob("config.json.*.corrupt"))
 
 
@@ -149,7 +149,7 @@ def test_output_folder_inside_input_is_rejected() -> None:
     with pytest.raises(ValidationError):
         AppConfig(
             input_folder=Path("/data/entrada"),
-            base_output_folder=Path("/data/entrada/salida"),  # anidada dentro de la entrada
+            base_output_folder=Path("/data/entrada/salida"),  # nested inside the input
             unknown_folder=Path("/data/sin"),
             quarantine_folder=Path("/data/err"),
         )
@@ -162,7 +162,7 @@ def test_invalid_template_token_is_rejected() -> None:
             base_output_folder=Path("/b"),
             unknown_folder=Path("/c"),
             quarantine_folder=Path("/d"),
-            destination_template="{proveedor}",  # token invalido (es {supplier})
+            destination_template="{proveedor}",  # invalid token (it is {supplier})
         )
 
 

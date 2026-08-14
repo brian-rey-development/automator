@@ -1,4 +1,4 @@
-"""Modelos inmutables del dominio de facturas AFIP."""
+"""Immutable models of the AFIP invoices domain."""
 
 from __future__ import annotations
 
@@ -7,21 +7,21 @@ from datetime import date
 from enum import StrEnum
 from pathlib import Path
 
-# Centinela cuando no se pudo detectar la razon social del proveedor.
+# Sentinel used when the supplier's legal name could not be detected.
 UNKNOWN_SUPPLIER = "PROVEEDOR_DESCONOCIDO"
 
 
 class VoucherKind(StrEnum):
-    """Tipo de comprobante. El valor es la etiqueta usada en el nombre del archivo."""
+    """Voucher type. The value is the label used in the file name."""
 
-    INVOICE = "FC"  # Factura
-    CREDIT_NOTE = "NC"  # Nota de credito
-    DEBIT_NOTE = "ND"  # Nota de debito
+    INVOICE = "FC"  # Invoice
+    CREDIT_NOTE = "NC"  # Credit note
+    DEBIT_NOTE = "ND"  # Debit note
 
 
 @dataclass(frozen=True, slots=True)
 class Voucher:
-    """Comprobante identificado por tipo y letra (por ejemplo FC A)."""
+    """Voucher identified by type and letter (for example FC A)."""
 
     kind: VoucherKind
     letter: str
@@ -33,15 +33,15 @@ class Voucher:
 
 @dataclass(frozen=True, slots=True)
 class ParsedInvoice:
-    """Datos extraidos de una factura, listos para archivar."""
+    """Data extracted from an invoice, ready to be archived."""
 
     voucher: Voucher
-    sales_point: str  # Punto de venta (4 digitos)
-    number: str  # Numero de comprobante (8 digitos)
-    supplier: str  # Razon social del proveedor
-    buyer_cuit: str | None  # CUIT de la sociedad compradora detectada
-    ambiguous_buyer: bool = False  # Aparecen varias sociedades propias: no se puede decidir
-    issue_date: date | None = None  # Fecha de emision, si se pudo leer
+    sales_point: str  # Point of sale (4 digits)
+    number: str  # Voucher number (8 digits)
+    supplier: str  # Supplier's legal name
+    buyer_cuit: str | None  # CUIT of the detected buying company
+    ambiguous_buyer: bool = False  # Several own companies appear: it cannot be decided
+    issue_date: date | None = None  # Issue date, if it could be read
 
     @property
     def full_number(self) -> str:
@@ -49,29 +49,29 @@ class ParsedInvoice:
 
     @property
     def has_number(self) -> bool:
-        """True si se pudo extraer un numero de comprobante real (no el de relleno)."""
+        """True if a real voucher number could be extracted (not the filler one)."""
         return self.number != "00000000" or self.sales_point != "0000"
 
     @property
     def has_supplier(self) -> bool:
-        """True si se detecto la razon social del proveedor (no el centinela)."""
+        """True if the supplier's legal name was detected (not the sentinel)."""
         return self.supplier != UNKNOWN_SUPPLIER
 
     @property
     def identity(self) -> str | None:
-        """Clave estable de la factura para detectar duplicados; None si no es fiable."""
+        """Stable invoice key to detect duplicates; None if not reliable."""
         if not self.has_number or not self.has_supplier:
             return None
         return f"{self.supplier.casefold()}|{self.full_number}|{self.voucher.label}"
 
 
 class ProcessOutcome(StrEnum):
-    """Resultado posible del procesamiento de un archivo."""
+    """Possible outcome of processing a file."""
 
     MOVED = "moved"
     DRY_RUN = "dry_run"
-    UNCLASSIFIED = "unclassified"  # Archivado, pero sin poder identificar la sociedad compradora.
-    DUPLICATE = "duplicate"  # Ya se habia archivado una factura con la misma identidad.
+    UNCLASSIFIED = "unclassified"  # Archived, but without being able to identify the buying company.
+    DUPLICATE = "duplicate"  # An invoice with the same identity had already been archived.
     NEEDS_REVIEW = "needs_review"
     QUARANTINED = "quarantined"
     SKIPPED_MISSING = "skipped_missing"
@@ -80,7 +80,7 @@ class ProcessOutcome(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ProcessResult:
-    """Resultado del procesamiento de un unico PDF."""
+    """Result of processing a single PDF."""
 
     source: Path
     outcome: ProcessOutcome

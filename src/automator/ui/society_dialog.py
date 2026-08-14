@@ -1,4 +1,4 @@
-"""Dialogo modal moderno para crear o editar una sociedad."""
+"""Modern modal dialog to create or edit a society."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from automator.ui.theme import CORNER_RADIUS, Palette
 
 
 class SocietyDialog(ctk.CTkToplevel):
-    """Dialogo que devuelve un SocietyMapping validado o None si se cancela."""
+    """Dialog that returns a validated SocietyMapping or None if cancelled."""
 
     def __init__(self, master: tk.Misc, existing: SocietyMapping | None = None) -> None:
         super().__init__(master)
@@ -91,7 +91,7 @@ class SocietyDialog(ctk.CTkToplevel):
 
     def _make_modal(self, master: tk.Misc) -> None:
         self.transient(master.winfo_toplevel())
-        # grab_set falla si la ventana aun no es visible: se espera a que lo sea.
+        # grab_set fails if the window is not yet visible: wait until it is.
         self.wait_visibility()
         self.grab_set()
         self.focus_set()

@@ -1,8 +1,8 @@
-"""Extraccion de datos de facturas AFIP a partir de texto plano.
+"""Extraction of AFIP invoice data from plain text.
 
-Todas las funciones son puras y tolerantes a fallos: nunca lanzan excepciones
-por texto inesperado, siempre devuelven el mejor resultado posible con valores
-por defecto deterministas.
+All functions are pure and fault-tolerant: they never raise exceptions on
+unexpected text, always returning the best possible result with deterministic
+default values.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ _DEFAULT_LETTER = "A"
 _DEFAULT_SALES_POINT = "0000"
 _DEFAULT_NUMBER = "00000000"
 
-# El codigo AFIP de comprobante es la senal mas confiable del tipo y la letra.
+# The AFIP voucher code is the most reliable signal of the type and letter.
 _AFIP_CODES: dict[str, tuple[VoucherKind, str]] = {
     "01": (VoucherKind.INVOICE, "A"),
     "02": (VoucherKind.DEBIT_NOTE, "A"),
@@ -36,11 +36,11 @@ _AFIP_CODES: dict[str, tuple[VoucherKind, str]] = {
     "53": (VoucherKind.CREDIT_NOTE, "M"),
 }
 
-# El `(?!\d)` evita capturar los primeros digitos de un numero mas largo (por
-# ejemplo un CAE), que produciria un tipo de comprobante incorrecto.
+# The `(?!\d)` avoids capturing the first digits of a longer number (for
+# example a CAE), which would produce an incorrect voucher type.
 _CODE_PATTERN = re.compile(r"\bC[oó]d(?:igo)?\.?\s*(\d{1,3})(?!\d)", re.IGNORECASE)
 
-# Orden importante: las notas se detectan antes que "FACTURA".
+# Order matters: notes are detected before "FACTURA".
 _KIND_PATTERNS: tuple[tuple[re.Pattern[str], VoucherKind], ...] = (
     (re.compile(r"NOTA\s+DE\s+CR[EÉ]DITO", re.IGNORECASE), VoucherKind.CREDIT_NOTE),
     (re.compile(r"NOTA\s+DE\s+D[EÉ]BITO", re.IGNORECASE), VoucherKind.DEBIT_NOTE),
@@ -52,8 +52,8 @@ _LETTER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# El layout real de AFIP muestra el punto de venta y el numero por separado, por
-# eso ese patron tiene prioridad; el formato combinado "0000-00000000" es el respaldo.
+# The real AFIP layout shows the point of sale and the number separately, which
+# is why that pattern has priority; the combined format "0000-00000000" is the fallback.
 _NUMBER_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"Punto\s+de\s+Venta\s*:?\s*(\d{4,5}).{0,60}?"
@@ -69,7 +69,7 @@ _DATE_PATTERN = re.compile(r"Fecha\s+de\s+Emisi[oó]n\s*:?\s*(\d{2})/(\d{2})/(\d
 
 
 def parse_invoice(text: str, known_cuits: Iterable[str] = ()) -> ParsedInvoice:
-    """Extrae los datos relevantes de una factura desde su texto."""
+    """Extract the relevant data of an invoice from its text."""
     sales_point, number = _detect_number(text)
     buyer_cuit, ambiguous = _detect_cuit(text, known_cuits)
     return ParsedInvoice(
@@ -91,7 +91,7 @@ def _detect_date(text: str) -> date | None:
     try:
         return date(year, month, day)
     except ValueError:
-        return None  # Fecha con dia/mes fuera de rango: se ignora sin romper.
+        return None  # Date with day/month out of range: ignored without breaking.
 
 
 def _detect_voucher(text: str) -> Voucher:
@@ -133,9 +133,9 @@ def _detect_number(text: str) -> tuple[str, str]:
 
 
 def _detect_supplier(text: str) -> str:
-    # Solo se confia en la razon social explicitamente etiquetada. Adivinar con la
-    # primera linea (logo, "ORIGINAL", etc.) archivaria la factura bajo un nombre
-    # inventado; ante la duda, se devuelve el centinela y se envia a revision.
+    # Only the explicitly labeled legal name is trusted. Guessing from the
+    # first line (logo, "ORIGINAL", etc.) would archive the invoice under a made-up
+    # name; when in doubt, the sentinel is returned and it is sent to review.
     match = _SUPPLIER_PATTERN.search(text)
     if match and match.group(1).strip():
         return match.group(1).strip()
@@ -143,13 +143,13 @@ def _detect_supplier(text: str) -> str:
 
 
 def _detect_cuit(text: str, known_cuits: Iterable[str]) -> tuple[str | None, bool]:
-    """Devuelve (cuit_comprador, ambiguo).
+    """Return (buyer_cuit, ambiguous).
 
-    Si aparecen dos o mas sociedades propias (tipico en facturas entre empresas del
-    mismo grupo) no se puede distinguir de forma confiable al comprador del emisor:
-    se marca ambiguo para enviar a revision en lugar de adivinar y archivar mal.
+    If two or more own companies appear (typical in invoices between companies of
+    the same group) the buyer cannot be reliably distinguished from the issuer:
+    it is marked ambiguous to send to review instead of guessing and archiving wrong.
     """
-    # Se normaliza el texto quitando separadores para tolerar CUIT con guiones o puntos.
+    # The text is normalized by removing separators to tolerate CUITs with dashes or dots.
     normalized = _CUIT_SEPARATORS.sub("", text)
     present = [cuit for cuit in known_cuits if cuit and cuit in normalized]
     if not present:

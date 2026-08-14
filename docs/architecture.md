@@ -1,89 +1,91 @@
-# Arquitectura
+# Architecture
 
-Automator separa la logica pura de los efectos secundarios y de la interfaz, en
-tres capas con dependencias hacia adentro: `ui -> services -> domain`. El nucleo
-no sabe que existe una interfaz grafica ni un disco.
+Automator separates pure logic from side effects and from the interface, into
+three layers with dependencies pointing inward: `ui -> services -> domain`. The
+core has no knowledge of a graphical interface or a disk.
 
 ```
 src/automator/
-  domain/      Logica pura y 100% testeable (sin IO)
-  services/    IO y orquestacion (PDF, archivos, watcher, motor, historial)
-  ui/          Interfaz de escritorio (CustomTkinter)
-  config.py    Modelo de configuracion validado e inmutable + persistencia
+  domain/      Pure, 100% testable logic (no IO)
+  services/    IO and orchestration (PDF, files, watcher, engine, history)
+  ui/          Desktop interface (CustomTkinter)
+  config.py    Validated, immutable configuration model + persistence
 ```
 
-## Capa de dominio (`domain/`)
+## Domain layer (`domain/`)
 
-Funciones puras y deterministas, sin efectos secundarios:
+Pure, deterministic functions with no side effects:
 
-- `models.py` - modelos inmutables: `Voucher`, `ParsedInvoice`, `ProcessOutcome`,
-  `ProcessResult`. `ParsedInvoice` expone propiedades derivadas (`has_number`,
+- `models.py` - immutable models: `Voucher`, `ParsedInvoice`, `ProcessOutcome`,
+  `ProcessResult`. `ParsedInvoice` exposes derived properties (`has_number`,
   `has_supplier`, `identity`).
-- `parser.py` - extrae tipo/letra (por codigo AFIP con respaldo por texto),
-  numero, proveedor, CUIT comprador y fecha. **Nunca lanza**: ante texto
-  inesperado devuelve defaults deterministas.
-- `classifier.py` - resuelve la carpeta destino aplicando la plantilla.
-- `filenames.py` - saneado de nombres para Windows y armado del nombre final.
+- `parser.py` - extracts type/letter (by AFIP code with a text-based fallback),
+  number, supplier, buyer CUIT and date. **Never raises**: when it encounters
+  unexpected text it returns deterministic defaults.
+- `classifier.py` - resolves the destination folder by applying the template.
+- `filenames.py` - name sanitizing for Windows and assembly of the final name.
 
-## Capa de servicios (`services/`)
+## Services layer (`services/`)
 
-- `pdf_reader.py` - extrae texto con cierre deterministico del archivo y
-  resiliencia por pagina.
-- `file_ops.py` - movimientos atomicos, sin sobrescribir, con soporte de rutas
-  largas y UNC en Windows.
-- `watcher.py` - vigila la carpeta de entrada (watchdog).
-- `processor.py` - orquesta el procesamiento de un PDF y decide su destino.
-- `engine.py` - motor en segundo plano: cola, worker, reescaneo periodico.
-- `ledger.py` - historial de auditoria en SQLite (base de historial, duplicados
-  y deshacer).
+- `pdf_reader.py` - extracts text with deterministic file closing and
+  per-page resilience.
+- `file_ops.py` - atomic moves, no overwriting, with support for long paths
+  and UNC on Windows.
+- `watcher.py` - watches the input folder (watchdog).
+- `processor.py` - orchestrates the processing of a PDF and decides its
+  destination.
+- `engine.py` - background engine: queue, worker, periodic rescan.
+- `ledger.py` - audit history in SQLite (basis for history, duplicates and
+  undo).
 
-## Capa de interfaz (`ui/`)
+## Interface layer (`ui/`)
 
-CustomTkinter. No contiene reglas de negocio: solo muestra estado y dispara
-acciones del motor. `main_window.py` coordina; `onboarding.py` y
-`society_dialog.py` son dialogos; `theme.py` es el design system; `system_utils.py`
-abre carpetas y muestra notificaciones.
+CustomTkinter. It contains no business rules: it only displays state and
+triggers engine actions. `main_window.py` coordinates; `onboarding.py` and
+`society_dialog.py` are dialogs; `theme.py` is the design system;
+`system_utils.py` opens folders and shows notifications.
 
-## Modelo de concurrencia
+## Concurrency model
 
 ```
-watcher (hilo)  ─┐
-                 ├─> queue.Queue ─> worker (hilo) ─> EngineEvent ─┐
-rescan (hilo)   ─┘                                                │
-                                                                  v
-                              queue.Queue de eventos <── UI (hilo Tkinter)
+watcher (thread) ─┐
+                  ├─> queue.Queue ─> worker (thread) ─> EngineEvent ─┐
+rescan (thread)  ─┘                                                  │
+                                                                     v
+                              event queue.Queue <── UI (Tkinter thread)
                                     _poll_events (after 150ms)
 ```
 
-- El motor corre en un hilo de fondo; la UI nunca se bloquea.
-- La comunicacion motor -> UI es via `EngineEvent` en una cola que se drena solo
-  desde el hilo de Tkinter. **Tkinter no es thread-safe.**
-- La cola de trabajo y la señal de parada se recrean por cada arranque
-  ("generacion"): un worker viejo que tarde en terminar nunca comparte cola con
-  uno nuevo, y un nuevo arranque se rechaza mientras el anterior siga vivo.
-- Un `set` de archivos en vuelo evita encolar dos veces el mismo PDF.
+- The engine runs on a background thread; the UI never blocks.
+- Engine -> UI communication happens via `EngineEvent` on a queue that is drained
+  only from the Tkinter thread. **Tkinter is not thread-safe.**
+- The work queue and the stop signal are recreated on every startup
+  ("generation"): an old worker that is slow to finish never shares a queue
+  with a new one, and a new startup is rejected while the previous one is still
+  alive.
+- A `set` of in-flight files prevents queuing the same PDF twice.
 
-## Flujo de un archivo
+## Flow of a file
 
 ```
-PDF nuevo -> wait_until_stable -> extract_text
-          -> parse_invoice
-          -> ambiguo?      -> _PARA_REVISAR
-          -> no confiable? -> _PARA_REVISAR
-          -> duplicado?    -> _DUPLICADOS
-          -> sin CUIT?     -> _SIN_CLASIFICAR
-          -> ok            -> carpeta de la sociedad (segun plantilla)
-          (ilegible/error) -> _ERRORES (cuarentena)
+new PDF -> wait_until_stable -> extract_text
+        -> parse_invoice
+        -> ambiguous?    -> _PARA_REVISAR
+        -> not reliable? -> _PARA_REVISAR
+        -> duplicate?    -> _DUPLICADOS
+        -> no CUIT?      -> _SIN_CLASIFICAR
+        -> ok            -> society folder (per template)
+        (unreadable/error) -> _ERRORES (quarantine)
 ```
 
-Cada resultado se registra en el ledger, pase lo que pase (salvo archivos que ya
-no existen).
+Every result is recorded in the ledger, no matter what happens (except files
+that no longer exist).
 
-## Persistencia
+## Persistence
 
-- Configuracion: `config.json` (guardado atomico, recuperacion ante corrupcion).
-- Historial: `history.db` (SQLite).
-- Logs: `automator.log` rotativo.
+- Configuration: `config.json` (atomic save, recovery from corruption).
+- History: `history.db` (SQLite).
+- Logs: rotating `automator.log`.
 
-Las rutas se resuelven con `platformdirs` (`config_path`, `ledger_path`,
-`log_dir`), por lo que respetan las convenciones de cada sistema operativo.
+Paths are resolved with `platformdirs` (`config_path`, `ledger_path`,
+`log_dir`), so they follow the conventions of each operating system.

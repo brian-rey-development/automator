@@ -1,1 +1,1 @@
-"""Interfaz grafica de escritorio construida con Tkinter/ttk."""
+"""Desktop graphical interface built with Tkinter/ttk."""

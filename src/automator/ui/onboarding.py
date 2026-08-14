@@ -1,4 +1,4 @@
-"""Asistente de primera vez: setup guiado para alguien sin experiencia."""
+"""First-time wizard: guided setup for someone without experience."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ _QUARANTINE_SUBFOLDER = "_ERRORES"
 
 
 class OnboardingDialog(ctk.CTkToplevel):
-    """Pide lo minimo (entrada, salida y una empresa) y devuelve un AppConfig."""
+    """Asks for the minimum (input, output and one company) and returns an AppConfig."""
 
     def __init__(self, master: tk.Misc, base: AppConfig) -> None:
         super().__init__(master)

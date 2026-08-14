@@ -1,1 +1,1 @@
-"""Nucleo de dominio: modelos y logica pura sin efectos secundarios."""
+"""Domain core: models and pure logic with no side effects."""

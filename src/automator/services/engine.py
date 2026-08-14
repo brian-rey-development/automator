@@ -1,7 +1,7 @@
-"""Motor de procesamiento: monitorea la carpeta y procesa PDFs en segundo plano.
+"""Processing engine: watches the folder and processes PDFs in the background.
 
-Es agnostico a la interfaz grafica: comunica eventos a traves de un callback
-(EventSink), de modo que la UI (o los tests) decide como reaccionar.
+It is agnostic to the graphical interface: it communicates events through a
+callback (EventSink), so the UI (or the tests) decides how to react.
 """
 
 from __future__ import annotations
@@ -26,11 +26,11 @@ from automator.services.watcher import FolderWatcher
 logger = logging.getLogger(__name__)
 
 _WORKER_JOIN_TIMEOUT_S = 10.0
-_RESCAN_INTERVAL_S = 60.0  # Red de seguridad: reintenta archivos que el watcher pudo perderse.
-_SENTINEL = object()  # Marca de fin de cola para detener el worker.
+_RESCAN_INTERVAL_S = 60.0  # Safety net: retries files the watcher may have missed.
+_SENTINEL = object()  # End-of-queue marker to stop the worker.
 
-# Resultados que dejaron una copia colocada: en modo copiar se marcan como vistos
-# para no reprocesar el original que queda en la carpeta de entrada.
+# Outcomes that left a placed copy: in copy mode they are marked as seen so the
+# original that stays in the input folder is not reprocessed.
 _COPY_PLACED = frozenset(
     {
         ProcessOutcome.MOVED,
@@ -43,7 +43,7 @@ _COPY_PLACED = frozenset(
 
 
 def _source_signature(path: Path) -> str | None:
-    """Firma estable de un archivo de origen (ruta, tamano y fecha) o None si no se puede leer."""
+    """Stable signature of a source file (path, size and date) or None if it cannot be read."""
     try:
         stat = path.stat()
     except OSError:
@@ -52,10 +52,10 @@ def _source_signature(path: Path) -> str | None:
 
 
 def _list_pdfs(folder: Path) -> list[Path]:
-    """Lista los PDFs de una carpeta sin distinguir mayusculas en la extension.
+    """Lists the PDFs in a folder, case-insensitive on the extension.
 
-    Propaga OSError a proposito: si la carpeta de entrada no se puede leer, el
-    motor debe avisarle al usuario, no quedarse mudo procesando una lista vacia.
+    Propagates OSError on purpose: if the input folder cannot be read, the engine
+    must notify the user, not stay silent processing an empty list.
     """
     return sorted(path for path in folder.iterdir() if path.is_file() and is_pdf(path))
 
@@ -70,7 +70,7 @@ class EngineEventType(StrEnum):
 
 @dataclass(frozen=True)
 class EngineEvent:
-    """Evento emitido por el motor hacia la interfaz."""
+    """Event emitted by the engine toward the interface."""
 
     type: EngineEventType
     message: str = ""
@@ -83,11 +83,11 @@ ConfigProvider = Callable[[], AppConfig]
 
 
 class ProcessingEngine:
-    """Coordina el watcher, una cola y un worker que procesa los PDFs.
+    """Coordinates the watcher, a queue and a worker that processes the PDFs.
 
-    La cola y la señal de parada se recrean en cada arranque (una "generacion"),
-    de modo que un worker viejo que tarde en terminar nunca comparte cola con uno
-    nuevo. Un arranque se rechaza mientras el worker anterior siga vivo.
+    The queue and the stop signal are recreated on each start (a "generation"), so
+    an old worker that takes long to finish never shares a queue with a new one. A
+    start is rejected while the previous worker is still alive.
     """
 
     def __init__(
@@ -107,12 +107,12 @@ class ProcessingEngine:
         self._rescanner: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
-        self._inflight: set[Path] = set()  # Evita encolar dos veces el mismo archivo.
-        self._input_unreadable = False  # Evita repetir el aviso de carpeta ilegible cada rescan.
+        self._inflight: set[Path] = set()  # Avoids enqueuing the same file twice.
+        self._input_unreadable = False  # Avoids repeating the unreadable-folder warning on each rescan.
 
     @property
     def is_running(self) -> bool:
-        worker = self._worker  # Lectura unica: el worker puede pasar a None en paralelo.
+        worker = self._worker  # Single read: the worker may become None in parallel.
         return worker is not None and worker.is_alive()
 
     def start(self) -> None:
@@ -128,11 +128,11 @@ class ProcessingEngine:
                 self._emit(EngineEvent(EngineEventType.ERROR, f"No se pudo iniciar el monitor: {exc}"))
                 return
         self._emit(EngineEvent(EngineEventType.STARTED, f"Monitoreando: {config.input_folder}"))
-        self.process_existing()  # Procesa lo que ya estaba en la carpeta, sin que el usuario haga nada.
+        self.process_existing()  # Processes what was already in the folder, without the user doing anything.
 
     def _launch(self, config: AppConfig) -> None:
-        # Estado fresco por generacion antes de arrancar los hilos: cola y señal
-        # propias para no cruzarse con un worker anterior que siga vivo.
+        # Fresh state per generation before starting the threads: own queue and
+        # signal so it does not cross with a previous worker that is still alive.
         config.ensure_folders()
         self._queue = queue.Queue()
         self._stop_event = threading.Event()
@@ -170,8 +170,8 @@ class ProcessingEngine:
         worker.join(timeout=_WORKER_JOIN_TIMEOUT_S)
         with self._lock:
             if worker.is_alive():
-                # Se conservan las referencias para que is_running siga en True y un
-                # nuevo start no arranque un segundo worker mientras este no muere.
+                # The references are kept so is_running stays True and a new start
+                # does not launch a second worker while this one does not die.
                 logger.warning("El worker no termino dentro del timeout; puede seguir vivo en segundo plano")
             else:
                 self._watcher = None
@@ -180,7 +180,7 @@ class ProcessingEngine:
         self._emit(EngineEvent(EngineEventType.STOPPED, "Monitor detenido."))
 
     def process_existing(self) -> int:
-        """Encola todos los PDFs ya presentes en la carpeta de entrada."""
+        """Enqueues all the PDFs already present in the input folder."""
         try:
             pdfs = _list_pdfs(self._config_provider().input_folder)
         except OSError as exc:
@@ -191,10 +191,10 @@ class ProcessingEngine:
         return len(pdfs)
 
     def reprocess_pending(self) -> int:
-        """Reintenta lo que quedo en revision y cuarentena (util tras ajustar la config).
+        """Retries what was left in review and quarantine (useful after adjusting the config).
 
-        No incluye archivados ni sin-clasificar: esos ya estan en el historial y se
-        detectarian como duplicados de si mismos.
+        Does not include archived nor unclassified: those are already in the history and
+        would be detected as duplicates of themselves.
         """
         config = self._config_provider()
         total = 0
@@ -210,8 +210,8 @@ class ProcessingEngine:
         return total
 
     def _rescan_loop(self) -> None:
-        # Reintenta periodicamente los archivos que sigan en la carpeta (por si el
-        # watcher perdio un evento o una cuarentena fallo de forma transitoria).
+        # Periodically retries the files still in the folder (in case the watcher
+        # missed an event or a quarantine failed transiently).
         while not self._stop_event.wait(_RESCAN_INTERVAL_S):
             try:
                 paths = _list_pdfs(self._config_provider().input_folder)
@@ -225,7 +225,7 @@ class ProcessingEngine:
                 self._requeue(path)
 
     def process_now(self, path: Path) -> ProcessResult:
-        """Procesa un archivo de forma sincronica (util para tests y CLI)."""
+        """Processes a file synchronously (useful for tests and CLI)."""
         result = self._processor.process(path)
         self._record(result)
         self._mark_if_copied(path, result.outcome)
@@ -238,7 +238,7 @@ class ProcessingEngine:
         return self._ledger.identity_exists(invoice.identity)
 
     def _record(self, result: ProcessResult) -> None:
-        # No se registra lo que ya no existe (ruido); todo lo demas queda en el historial.
+        # What no longer exists is not recorded (noise); everything else stays in the history.
         if self._ledger is None or result.outcome is ProcessOutcome.SKIPPED_MISSING:
             return
         try:
@@ -247,20 +247,20 @@ class ProcessingEngine:
             logger.exception("No se pudo registrar en el historial")
 
     def _enqueue(self, path: Path) -> None:
-        # Camino del watcher y del backlog inicial: cuenta como "detectado".
+        # Watcher and initial backlog path: counts as "detected".
         if self._already_processed(path) or not self._reserve(path):
             return
         self._emit(EngineEvent(EngineEventType.DETECTED, path.name, path))
         self._queue.put(path)
 
     def _requeue(self, path: Path) -> None:
-        # Camino del rescan: reintenta sin volver a contar como "detectado".
+        # Rescan path: retries without counting again as "detected".
         if not self._already_processed(path) and self._reserve(path):
             self._queue.put(path)
 
     def _already_processed(self, path: Path) -> bool:
-        # Solo aplica al modo copiar: el original queda en la entrada, asi que se
-        # recuerda cual ya se proceso para no volver a copiarlo en cada rescan.
+        # Only applies to copy mode: the original stays in the input, so it remembers
+        # which one was already processed to avoid copying it again on each rescan.
         if self._ledger is None or not self._config_provider().copy_files:
             return False
         signature = _source_signature(path)

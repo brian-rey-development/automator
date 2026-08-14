@@ -1,4 +1,4 @@
-"""Fixtures compartidos y textos de factura de ejemplo para los tests."""
+"""Shared fixtures and sample invoice texts for the tests."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 
 from automator.config import AppConfig, SocietyMapping
 
-# CUIT ficticios de sociedades de prueba (coinciden con los textos de ejemplo).
+# Fictitious CUITs for the test societies (they match the sample texts).
 CUIT_ONE = "30111111118"
 CUIT_TWO = "30222222229"
 
@@ -58,7 +58,7 @@ Punto de Venta: 0009   Comp. Nro: 00000001
 
 @pytest.fixture
 def make_config(tmp_path: Path) -> Callable[..., AppConfig]:
-    """Devuelve una fabrica de AppConfig apuntando a directorios temporales."""
+    """Return an AppConfig factory pointing at temporary directories."""
 
     def factory(**overrides: object) -> AppConfig:
         base = tmp_path / "salida"
@@ -81,7 +81,7 @@ def make_config(tmp_path: Path) -> Callable[..., AppConfig]:
 
 @pytest.fixture
 def dummy_pdf(tmp_path: Path) -> Callable[[str], Path]:
-    """Crea un archivo con extension .pdf en la carpeta de entrada temporal."""
+    """Create a file with a .pdf extension in the temporary input folder."""
 
     def factory(name: str = "factura.pdf") -> Path:
         folder = tmp_path / "entrada"

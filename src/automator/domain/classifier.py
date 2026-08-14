@@ -1,4 +1,4 @@
-"""Resolucion de la carpeta destino para una factura."""
+"""Resolution of the destination folder for an invoice."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ _NO_DATE = "sin_fecha"
 
 
 def destination_dir(invoice: ParsedInvoice, base_folder: Path, template: str = "{supplier}") -> Path:
-    """Devuelve la carpeta destino: base de la sociedad + subcarpetas de la plantilla.
+    """Return the destination folder: company base + template subfolders.
 
-    La plantilla admite {supplier} {society} {year} {month} {day}. Cada segmento
-    (separado por '/') se saneada para que sea un nombre valido en Windows.
+    The template accepts {supplier} {society} {year} {month} {day}. Each segment
+    (separated by '/') is sanitized so it is a valid name on Windows.
     """
     context = _template_context(invoice, base_folder)
     segments = [sanitize_component(segment.format(**context)) for segment in template.split("/") if segment]

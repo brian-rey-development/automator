@@ -1,4 +1,4 @@
-"""Tests de saneamiento y construccion de nombres de archivo."""
+"""Tests for sanitizing and building file names."""
 
 from __future__ import annotations
 
@@ -38,5 +38,5 @@ def test_build_filename_uses_all_components() -> None:
         supplier="ACME S.A.",
         buyer_cuit=None,
     )
-    # El punto final se elimina porque Windows no permite nombres terminados en punto.
+    # The trailing dot is removed because Windows does not allow names ending in a dot.
     assert build_filename(invoice) == "ACME S.A FC A 0001-00000123.pdf"

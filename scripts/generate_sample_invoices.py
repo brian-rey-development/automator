@@ -1,16 +1,16 @@
-"""Genera facturas PDF de ejemplo para probar Automator de punta a punta.
+"""Generate sample PDF invoices to test Automator end to end.
 
-Crea comprobantes con texto real (que el parser puede leer) en la carpeta de
-entrada configurada, cubriendo los distintos caminos: archivado por sociedad,
-sin clasificar, para revisar y cuarentena.
+Creates vouchers with real text (that the parser can read) in the configured
+input folder, covering the different paths: archived by society,
+unclassified, for review and quarantine.
 
-Los datos son ficticios. Si hay sociedades configuradas, algunas facturas usan
-sus CUIT para que se vea el ruteo; si no hay ninguna, todas caen en las carpetas
-automaticas (que igual demuestra el flujo).
+The data is fictitious. If there are configured societies, some invoices use
+their CUITs so the routing is visible; if there are none, all fall into the
+automatic folders (which still demonstrates the flow).
 
-Uso:
-    python scripts/generate_sample_invoices.py            # usa la carpeta configurada
-    python scripts/generate_sample_invoices.py /ruta/dir  # usa una carpeta puntual
+Usage:
+    python scripts/generate_sample_invoices.py            # uses the configured folder
+    python scripts/generate_sample_invoices.py /ruta/dir  # uses a specific folder
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from reportlab.pdfgen import canvas
 
 from automator.config import AppConfig, load_config
 
-# CUIT ficticios de respaldo cuando no hay sociedades configuradas.
+# Fallback fictitious CUITs when there are no configured societies.
 _FICTIONAL_BUYER_A = "30111111118"
 _FICTIONAL_BUYER_B = "30222222229"
 _FICTIONAL_UNKNOWN = "30999999995"
@@ -61,7 +61,7 @@ def _invoice_lines(
 
 
 def generate(target: Path, config: AppConfig) -> list[Path]:
-    """Genera los PDF de ejemplo y devuelve las rutas creadas."""
+    """Generate the sample PDFs and return the created paths."""
     target.mkdir(parents=True, exist_ok=True)
     cuits = [society.cuit for society in config.societies]
     first = cuits[0] if cuits else _FICTIONAL_BUYER_A
@@ -77,7 +77,7 @@ def generate(target: Path, config: AppConfig) -> list[Path]:
         "factura_sin_clasificar.pdf": _invoice_lines(
             "FACTURA", "A", "01", "0007", "00000777", "PROVEEDOR EJEMPLO TRES SA", _FICTIONAL_UNKNOWN
         ),
-        # Sin numero de comprobante: deberia ir a la carpeta "para revisar".
+        # Without a voucher number: it should go to the "for review" folder.
         "factura_para_revisar.pdf": [
             "FACTURA",
             "Cod. 01",
@@ -86,7 +86,7 @@ def generate(target: Path, config: AppConfig) -> list[Path]:
         ],
     }
     created = [_render(target / name, lines) for name, lines in samples.items()]
-    # PDF sin texto legible: deberia ir a cuarentena.
+    # PDF without readable text: it should go to quarantine.
     created.append(_render(target / "escaneo_ilegible.pdf", []))
     return created
 

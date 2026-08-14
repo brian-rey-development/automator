@@ -1,8 +1,8 @@
-"""Registro de auditoria persistente en SQLite.
+"""Persistent audit log backed by SQLite.
 
-Cada archivo procesado queda guardado (que era, a donde fue, cuando y con que
-resultado). Es la base de tres funciones: historial buscable, deteccion de
-duplicados y deshacer un movimiento. Usa solo la biblioteca estandar.
+Every processed file is stored (what it was, where it went, when and with what
+result). It backs three features: searchable history, duplicate detection and
+undoing a move. Uses only the standard library.
 """
 
 from __future__ import annotations
@@ -18,9 +18,9 @@ from automator.domain.models import ProcessOutcome, ProcessResult
 
 logger = logging.getLogger(__name__)
 
-# Resultados cuyo archivo se puede devolver a la carpeta de entrada (tienen destino).
+# Outcomes whose file can be returned to the input folder (they have a destination).
 _UNDOABLE = (ProcessOutcome.MOVED, ProcessOutcome.UNCLASSIFIED, ProcessOutcome.DUPLICATE)
-# Resultados que cuentan como "ya archivada" para detectar duplicados.
+# Outcomes that count as "already archived" for detecting duplicates.
 _ARCHIVED = (ProcessOutcome.MOVED, ProcessOutcome.UNCLASSIFIED)
 
 _SCHEMA = """
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS processed_sources (
 
 @dataclass(frozen=True, slots=True)
 class LedgerRecord:
-    """Una fila del historial, lista para mostrar o deshacer."""
+    """A history row, ready to display or undo."""
 
     id: int
     ts: str
@@ -61,7 +61,7 @@ class LedgerRecord:
 
 
 class Ledger:
-    """Historial thread-safe: el worker escribe y la interfaz lee."""
+    """Thread-safe history: the worker writes and the interface reads."""
 
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,13 +125,13 @@ class Ledger:
             self._conn.commit()
 
     def source_seen(self, signature: str) -> bool:
-        """True si ese archivo de origen ya fue procesado (para el modo copiar)."""
+        """True if that source file was already processed (for copy mode)."""
         with self._lock:
             cursor = self._conn.execute("SELECT 1 FROM processed_sources WHERE signature = ? LIMIT 1", (signature,))
             return cursor.fetchone() is not None
 
     def mark_source_seen(self, signature: str, timestamp: str | None = None) -> None:
-        """Recuerda un archivo de origen ya procesado, para no reprocesarlo al copiar."""
+        """Remembers an already-processed source file, to avoid reprocessing it when copying."""
         with self._lock:
             self._conn.execute(
                 "INSERT OR IGNORE INTO processed_sources (signature, ts) VALUES (?, ?)",

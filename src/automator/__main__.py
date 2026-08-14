@@ -1,4 +1,4 @@
-"""Permite ejecutar la app con `python -m automator`."""
+"""Allows running the app with `python -m automator`."""
 
 from __future__ import annotations
 

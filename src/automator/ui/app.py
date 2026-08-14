@@ -1,4 +1,4 @@
-"""Punto de entrada de la aplicacion de escritorio."""
+"""Entry point of the desktop application."""
 
 from __future__ import annotations
 
@@ -24,13 +24,13 @@ _MIN_SIZE = (980, 640)
 
 
 def main() -> None:
-    """Inicializa logging, carga la configuracion y lanza la ventana principal."""
+    """Initializes logging, loads the configuration and launches the main window."""
     setup_logging()
     logger.info("Automator %s iniciando", __version__)
     try:
         _run()
     except Exception:
-        # En el .exe empaquetado no hay consola: un fallo de arranque debe ser visible.
+        # The packaged .exe has no console: a startup failure must be visible.
         logger.exception("Fallo al iniciar Automator")
         messagebox.showerror(
             "Automator",
@@ -40,7 +40,7 @@ def main() -> None:
 
 
 def _apply_icon(root: ctk.CTk) -> None:
-    # Icono de la ventana; best-effort para no romper el arranque si falta el asset.
+    # Window icon; best-effort so startup does not break if the asset is missing.
     icon = _icon_path()
     if icon is None:
         return

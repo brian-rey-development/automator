@@ -1,80 +1,82 @@
-# Configuracion
+# Configuration
 
-Toda la configuracion se edita desde la interfaz (pestaña Configuracion) y se
-guarda en `config.json`. No hace falta tocar el archivo a mano.
+All configuration is edited from the interface (Configuration tab) and saved in
+`config.json`. There is no need to touch the file by hand.
 
-## Ubicacion de los archivos
+## File locations
 
-Las rutas siguen las convenciones de cada sistema operativo (via `platformdirs`):
+Paths follow the conventions of each operating system (via `platformdirs`):
 
-- **Configuracion**: `config.json` en el directorio de config del usuario.
-- **Historial**: `history.db` en el directorio de datos del usuario.
-- **Logs**: `automator.log` en el directorio de logs del usuario.
+- **Configuration**: `config.json` in the user's config directory.
+- **History**: `history.db` in the user's data directory.
+- **Logs**: `automator.log` in the user's log directory.
 
-Desde la app: Configuracion -> "Abrir carpeta de logs".
+From the app: Configuration -> "Open logs folder".
 
-## Campos
+## Fields
 
-### Carpetas principales
+### Main folders
 
-- **Carpeta de entrada**: donde caen los PDF descargados (se vigila esta carpeta).
-- **Carpeta de salida**: raiz donde se guardan las facturas ordenadas.
+- **Input folder**: where downloaded PDFs land (this is the folder being
+  watched).
+- **Output folder**: root where the sorted invoices are stored.
 
-### Empresas (sociedades)
+### Companies
 
-Lista de sociedades compradoras. Cada una tiene:
+List of buyer companies. Each one has:
 
-- **CUIT**: 11 digitos (se aceptan guiones y puntos, se normaliza solo).
-- **Razon social**: nombre visible, no puede estar vacio.
-- **Carpeta**: ruta absoluta donde se archivan sus facturas.
+- **CUIT**: 11 digits (hyphens and dots are accepted, normalized automatically).
+- **Company name**: visible name, cannot be empty.
+- **Folder**: absolute path where its invoices are filed.
 
-Se agregan, editan y eliminan desde la interfaz. La app arranca sin ninguna
-empresa: se definen las propias.
+They are added, edited and removed from the interface. The app starts with no
+company: you define your own.
 
-### Opciones
+### Options
 
-- **Modo de prueba**: no mueve nada, solo muestra que haria.
-- **Copiar en vez de mover**: deja el original en la carpeta de entrada y coloca
-  una copia en el destino. La app recuerda cada archivo ya procesado (por ruta,
-  tamano y fecha, en el historial) para no volver a copiarlo en cada rescan. Por
-  defecto esta desactivado: mueve (la carpeta de entrada se vacia sola).
-- **Esperar a que termine la descarga**: evita mover archivos a medio bajar.
-- **Espera maxima (segundos)**: 0 a 120.
-- **Notificaciones**: aviso del sistema cuando aumentan los pendientes.
-- **Estructura de carpetas**: plantilla dentro de la carpeta de cada sociedad.
+- **Test mode**: moves nothing, only shows what it would do.
+- **Copy instead of move**: leaves the original in the input folder and places a
+  copy in the destination. The app remembers each already-processed file (by
+  path, size and date, in the history) so it does not re-copy it on every
+  rescan. Disabled by default: it moves (the input folder empties itself).
+- **Wait for the download to finish**: avoids moving half-downloaded files.
+- **Maximum wait (seconds)**: 0 to 120.
+- **Notifications**: system notice when pending items increase.
+- **Folder structure**: template inside each company's folder.
 
-### Carpetas automaticas (avanzado)
+### Automatic folders (advanced)
 
-- **Sin clasificar**: facturas de un CUIT no configurado.
-- **Cuarentena**: PDF ilegibles o con errores.
+- **Unclassified**: invoices from a CUIT that is not configured.
+- **Quarantine**: unreadable PDFs or PDFs with errors.
 
-Ademas, dentro de la carpeta de salida se crean solas: `_PARA_REVISAR` (revision
-manual) y `_DUPLICADOS`.
+In addition, two folders are created on their own inside the output folder:
+`_PARA_REVISAR` (manual review) and `_DUPLICADOS`.
 
-## Plantilla de carpetas
+## Folder template
 
-Define subcarpetas dentro de la carpeta de cada sociedad. Tokens validos:
+Defines subfolders inside each company's folder. Valid tokens:
 
-| Token | Valor |
+| Token | Value |
 |---|---|
-| `{supplier}` | Razon social del proveedor |
-| `{society}` | Nombre de la carpeta de la sociedad |
-| `{year}` | Ano de la fecha de emision (o `sin_fecha`) |
-| `{month}` | Mes (o `sin_fecha`) |
-| `{day}` | Dia (o `sin_fecha`) |
+| `{supplier}` | Supplier company name |
+| `{society}` | Name of the company folder |
+| `{year}` | Year of the issue date (or `sin_fecha`) |
+| `{month}` | Month (or `sin_fecha`) |
+| `{day}` | Day (or `sin_fecha`) |
 
-Ejemplos:
+Examples:
 
-- `{supplier}` (por defecto) -> `.../Sociedad/PROVEEDOR/factura.pdf`
-- `{year}/{month}/{supplier}` -> `.../Sociedad/2026/08/PROVEEDOR/factura.pdf`
+- `{supplier}` (the default) -> `.../Company/SUPPLIER/invoice.pdf`
+- `{year}/{month}/{supplier}` -> `.../Company/2026/08/SUPPLIER/invoice.pdf`
 
-Un token invalido se rechaza al guardar.
+An invalid token is rejected on save.
 
-## Reglas de validacion
+## Validation rules
 
-- Las carpetas de salida no pueden estar dentro de la carpeta de entrada (evita
-  un bucle de reprocesamiento).
-- No puede haber CUIT repetidos entre sociedades.
-- Las rutas de las sociedades deben ser absolutas.
+- The output folders cannot be inside the input folder (this avoids a
+  reprocessing loop).
+- CUITs cannot be repeated across companies.
+- Company paths must be absolute.
 
-Si algo no valida, la interfaz lo avisa y no guarda hasta corregirlo.
+If something does not validate, the interface reports it and does not save until
+it is fixed.

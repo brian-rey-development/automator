@@ -1,8 +1,8 @@
-"""Smokes funcionales de la interfaz.
+"""Functional smoke tests for the interface.
 
-Requieren un display; se saltean solos si no hay (por ejemplo, un entorno sin X).
-En CI corren bajo xvfb. Verifican que la ventana se construye, cambia de vista y
-recolecta configuracion sin excepciones.
+They require a display; they skip themselves if there is none (for example, an environment without X).
+In CI they run under xvfb. They verify that the window builds, switches views and
+collects configuration without exceptions.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ def window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[MainWind
     monkeypatch.setattr(main_window, "ledger_path", lambda: tmp_path / "history.db")
     try:
         root = ctk.CTk()
-    except Exception as exc:  # noqa: BLE001 -- sin display: se saltea el test, no es un fallo
+    except Exception as exc:  # noqa: BLE001 -- no display: the test is skipped, it is not a failure
         pytest.skip(f"sin display para Tk: {exc}")
     root.withdraw()
     win = MainWindow(root, ConfigStore(_config(tmp_path)))
@@ -50,9 +50,9 @@ def window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[MainWind
 
 
 def test_window_builds_and_switches_views(window: MainWindow) -> None:
-    # winfo_manager() no depende de que el toplevel este visible: "grid" si esta
-    # montada, "" si se hizo grid_remove. Se verifica con los frames planos; la
-    # vista de config (scrollable) solo se ejercita para asegurar que no rompe.
+    # winfo_manager() does not depend on the toplevel being visible: "grid" if it is
+    # mounted, "" if grid_remove was called. It is checked with the flat frames; the
+    # config view (scrollable) is only exercised to make sure it does not break.
     window._show("history")
     window.update_idletasks()
     assert window._history_view.winfo_manager() == "grid"
