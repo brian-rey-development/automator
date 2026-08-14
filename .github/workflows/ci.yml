@@ -22,6 +22,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
+      - name: Instalar dependencias del sistema (Tk + xvfb para tests de UI)
+        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk
+
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
@@ -36,5 +39,35 @@ jobs:
       - name: Mypy (tipos)
         run: mypy
 
-      - name: Pytest (tests + cobertura)
-        run: pytest --cov
+      - name: Pytest (tests + cobertura, bajo xvfb para la UI)
+        run: xvfb-run -a pytest --cov
+
+  build-windows:
+    runs-on: windows-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Generar el icono de marca
+        run: python scripts/generate_icon.py
+
+      - name: Empaquetar con PyInstaller
+        run: pyinstaller automator.spec --noconfirm --clean
+
+      - name: Publicar el ejecutable como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: Automator-windows
+          path: dist/Automator.exe
+          if-no-files-found: error

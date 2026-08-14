@@ -1,0 +1,40 @@
+name: Release
+
+# Al pushear un tag vX.Y.Z, construye el ejecutable de Windows y lo adjunta a un
+# release de GitHub.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Generar el icono de marca
+        run: python scripts/generate_icon.py
+
+      - name: Empaquetar con PyInstaller
+        run: pyinstaller automator.spec --noconfirm --clean
+
+      - name: Crear el release y adjuntar el ejecutable
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Automator.exe
+          generate_release_notes: true

@@ -9,6 +9,10 @@ pre-commit install    # instala los hooks de calidad (opcional pero recomendado)
 
 Requiere Python 3.11+.
 
+Para una instalacion reproducible bit a bit hay un lockfile (`uv.lock`): con
+[uv](https://docs.astral.sh/uv/), `uv sync --extra dev` instala exactamente las
+mismas versiones. Regenerar el lock con `make lock` cuando cambian las dependencias.
+
 ## Flujo de trabajo
 
 1. Crear una rama a partir de `main`.
@@ -54,9 +58,11 @@ comandos.
 
 - El nucleo (`domain/`, `services/`) debe tener tests que cubran cada rama de
   decision (movido, sin clasificar, duplicado, revision, cuarentena).
-- La UI no tiene tests automatizados: al tocarla, correr un smoke manual que
-  construya `MainWindow` sin excepciones.
-- Los fixtures de ejemplo estan en `tests/conftest.py`.
+- La UI se testea con smokes funcionales en `tests/test_ui.py`, que se saltean
+  solos si no hay display (en CI corren bajo xvfb).
+- La cobertura del nucleo tiene un piso del 80% (`fail_under` en `pyproject.toml`);
+  la CI falla si baja de ahi.
+- Los fixtures de ejemplo estan en `tests/conftest.py`. Nunca usar datos reales.
 
 ## Commits
 

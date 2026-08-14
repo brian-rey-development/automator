@@ -7,7 +7,7 @@ PIP := $(VENV)/bin/pip
 BIN := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev run samples demo icon lint format typecheck test cov check build clean
+.PHONY: help install dev run samples demo icon lock lint format typecheck test cov check build clean
 
 help: ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -30,6 +30,9 @@ demo: samples run ## Genera facturas de ejemplo y abre la app para probarla
 
 icon: ## Genera el icono de marca (assets/automator.ico y .png)
 	$(PY) scripts/generate_icon.py
+
+lock: ## Regenera el lockfile de dependencias (requiere uv)
+	uv lock
 
 lint: ## Linting con ruff (sin modificar archivos)
 	$(BIN)/ruff check .
