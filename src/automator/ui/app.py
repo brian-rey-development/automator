@@ -7,7 +7,7 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 
-from automator.config import load_store
+from automator.config import config_path, load_store
 from automator.logging_config import log_location, setup_logging
 from automator.ui.main_window import MainWindow
 from automator.ui.theme import init_appearance
@@ -41,7 +41,8 @@ def _run() -> None:
     root.geometry(_INITIAL_GEOMETRY)
     root.minsize(*_MIN_SIZE)
 
-    window = MainWindow(root, load_store())
+    first_run = not config_path().exists()
+    window = MainWindow(root, load_store(), first_run=first_run)
     window.pack(fill="both", expand=True)
     root.protocol("WM_DELETE_WINDOW", window.on_close)
     root.mainloop()
