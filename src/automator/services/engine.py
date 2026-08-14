@@ -15,8 +15,9 @@ from enum import StrEnum
 from pathlib import Path
 
 from automator.config import AppConfig
-from automator.domain.models import ProcessResult
+from automator.domain.models import ParsedInvoice, ProcessOutcome, ProcessResult
 from automator.services.file_ops import is_pdf
+from automator.services.ledger import Ledger
 from automator.services.pdf_reader import extract_text
 from automator.services.processor import InvoiceProcessor, TextExtractor
 from automator.services.watcher import FolderWatcher
@@ -72,10 +73,12 @@ class ProcessingEngine:
         config_provider: ConfigProvider,
         sink: EventSink,
         extractor: TextExtractor = extract_text,
+        ledger: Ledger | None = None,
     ) -> None:
         self._config_provider = config_provider
         self._sink = sink
-        self._processor = InvoiceProcessor(config_provider, extractor)
+        self._ledger = ledger
+        self._processor = InvoiceProcessor(config_provider, extractor, self._duplicate_check)
         self._queue: queue.Queue[object] = queue.Queue()
         self._watcher: FolderWatcher | None = None
         self._worker: threading.Thread | None = None
@@ -165,6 +168,25 @@ class ProcessingEngine:
             self._enqueue(path)
         return len(pdfs)
 
+    def reprocess_pending(self) -> int:
+        """Reintenta lo que quedo en revision y cuarentena (util tras ajustar la config).
+
+        No incluye archivados ni sin-clasificar: esos ya estan en el historial y se
+        detectarian como duplicados de si mismos.
+        """
+        config = self._config_provider()
+        total = 0
+        for folder in (config.review_folder, config.quarantine_folder):
+            try:
+                pdfs = _list_pdfs(folder)
+            except OSError:
+                logger.warning("No se pudo listar %s para reintentar", folder)
+                continue
+            for path in pdfs:
+                self._requeue(path)
+                total += 1
+        return total
+
     def _rescan_loop(self) -> None:
         # Reintenta periodicamente los archivos que sigan en la carpeta (por si el
         # watcher perdio un evento o una cuarentena fallo de forma transitoria).
@@ -183,8 +205,23 @@ class ProcessingEngine:
     def process_now(self, path: Path) -> ProcessResult:
         """Procesa un archivo de forma sincronica (util para tests y CLI)."""
         result = self._processor.process(path)
+        self._record(result)
         self._emit(EngineEvent(EngineEventType.RESULT, result.message, path, result))
         return result
+
+    def _duplicate_check(self, invoice: ParsedInvoice) -> bool:
+        if self._ledger is None or invoice.identity is None:
+            return False
+        return self._ledger.identity_exists(invoice.identity)
+
+    def _record(self, result: ProcessResult) -> None:
+        # No se registra lo que ya no existe (ruido); todo lo demas queda en el historial.
+        if self._ledger is None or result.outcome is ProcessOutcome.SKIPPED_MISSING:
+            return
+        try:
+            self._ledger.record(result)
+        except Exception:
+            logger.exception("No se pudo registrar en el historial")
 
     def _enqueue(self, path: Path) -> None:
         # Camino del watcher y del backlog inicial: cuenta como "detectado".
@@ -215,6 +252,7 @@ class ProcessingEngine:
     def _safe_process(self, path: Path) -> None:
         try:
             result = self._processor.process(path)
+            self._record(result)
             self._emit(EngineEvent(EngineEventType.RESULT, result.message, path, result))
         except Exception as exc:
             logger.exception("Error inesperado procesando %s", path)

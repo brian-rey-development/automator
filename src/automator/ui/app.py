@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+import sys
+import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox
 
 import customtkinter as ctk
 
-from automator.config import load_store
+from automator.config import config_path, load_store
 from automator.logging_config import log_location, setup_logging
 from automator.ui.main_window import MainWindow
 from automator.ui.theme import init_appearance
@@ -34,14 +37,33 @@ def main() -> None:
         raise
 
 
+def _apply_icon(root: ctk.CTk) -> None:
+    # Icono de la ventana; best-effort para no romper el arranque si falta el asset.
+    icon = _icon_path()
+    if icon is None:
+        return
+    try:
+        root.iconphoto(True, tk.PhotoImage(file=str(icon)))
+    except tk.TclError:
+        logger.debug("No se pudo aplicar el icono de la ventana", exc_info=True)
+
+
+def _icon_path() -> Path | None:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3]))
+    candidate = base / "assets" / "automator.png"
+    return candidate if candidate.exists() else None
+
+
 def _run() -> None:
     init_appearance()
     root = ctk.CTk()
     root.title(_WINDOW_TITLE)
     root.geometry(_INITIAL_GEOMETRY)
     root.minsize(*_MIN_SIZE)
+    _apply_icon(root)
 
-    window = MainWindow(root, load_store())
+    first_run = not config_path().exists()
+    window = MainWindow(root, load_store(), first_run=first_run)
     window.pack(fill="both", expand=True)
     root.protocol("WM_DELETE_WINDOW", window.on_close)
     root.mainloop()

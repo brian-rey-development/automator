@@ -30,6 +30,7 @@ dev = [
     "mypy>=1.10",
     "pyinstaller>=6.6",
     "reportlab>=4.0",
+    "pillow>=10.0",
 ]
 
 [project.gui-scripts]

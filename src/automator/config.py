@@ -9,7 +9,7 @@ import re
 import threading
 from pathlib import Path
 
-from platformdirs import user_config_dir, user_log_dir
+from platformdirs import user_config_dir, user_data_dir, user_log_dir
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ APP_AUTHOR = "Brian Rey"
 _CUIT_LENGTH = 11
 _MIN_STABILITY_TIMEOUT = 0.0
 _MAX_STABILITY_TIMEOUT = 120.0
+_TEMPLATE_TOKENS = {"supplier", "society", "year", "month", "day"}
 
 
 def _is_within(child: Path, parent: Path) -> bool:
@@ -33,6 +34,14 @@ def _is_within(child: Path, parent: Path) -> bool:
 
 def config_path() -> Path:
     return Path(user_config_dir(APP_NAME, APP_AUTHOR)) / "config.json"
+
+
+def data_dir() -> Path:
+    return Path(user_data_dir(APP_NAME, APP_AUTHOR))
+
+
+def ledger_path() -> Path:
+    return data_dir() / "history.db"
 
 
 def log_dir() -> Path:
@@ -86,6 +95,10 @@ class AppConfig(BaseModel):
     dry_run: bool = False
     wait_for_stability: bool = True
     stability_timeout_s: float = Field(default=10.0, ge=_MIN_STABILITY_TIMEOUT, le=_MAX_STABILITY_TIMEOUT)
+    # Plantilla de subcarpetas dentro de la carpeta de cada sociedad. Tokens validos:
+    # {supplier} {society} {year} {month} {day}. Por defecto solo por proveedor.
+    destination_template: str = "{supplier}"
+    notify: bool = True  # Avisos del sistema cuando algo necesita atencion.
 
     @model_validator(mode="after")
     def _reject_duplicate_cuits(self) -> AppConfig:
@@ -105,10 +118,24 @@ class AppConfig(BaseModel):
             raise ValueError("Las carpetas de salida no pueden estar dentro de la carpeta de entrada.")
         return self
 
+    @field_validator("destination_template")
+    @classmethod
+    def _validate_template(cls, value: str) -> str:
+        tokens = set(re.findall(r"\{(\w+)\}", value))
+        unknown = tokens - _TEMPLATE_TOKENS
+        if unknown:
+            raise ValueError(f"La plantilla usa tokens invalidos: {', '.join(sorted(unknown))}")
+        return value
+
     @property
     def review_folder(self) -> Path:
         """Carpeta para facturas con datos incompletos que requieren revision manual."""
         return self.base_output_folder / "_PARA_REVISAR"
+
+    @property
+    def duplicates_folder(self) -> Path:
+        """Carpeta para facturas ya archivadas antes (detectadas por identidad)."""
+        return self.base_output_folder / "_DUPLICADOS"
 
     def known_cuits(self) -> list[str]:
         return [society.cuit for society in self.societies]
@@ -130,6 +157,7 @@ class AppConfig(BaseModel):
             self.unknown_folder,
             self.quarantine_folder,
             self.review_folder,
+            self.duplicates_folder,
         ]
         folders.extend(society.folder for society in self.societies)
         return folders

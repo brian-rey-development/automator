@@ -7,7 +7,7 @@ PIP := $(VENV)/bin/pip
 BIN := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev run samples demo lint format typecheck test cov check build clean
+.PHONY: help install dev run samples demo icon lint format typecheck test cov check build clean
 
 help: ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -28,6 +28,9 @@ samples: ## Genera facturas de ejemplo en la carpeta de entrada configurada
 
 demo: samples run ## Genera facturas de ejemplo y abre la app para probarla
 
+icon: ## Genera el icono de marca (assets/automator.ico y .png)
+	$(PY) scripts/generate_icon.py
+
 lint: ## Linting con ruff (sin modificar archivos)
 	$(BIN)/ruff check .
 
@@ -46,7 +49,7 @@ cov: ## Ejecuta los tests con reporte de cobertura
 
 check: lint typecheck test ## Corre linting, tipos y tests (usar antes de commitear)
 
-build: ## Genera el ejecutable con PyInstaller
+build: icon ## Genera el ejecutable con PyInstaller (genera el icono primero)
 	$(BIN)/pyinstaller automator.spec --noconfirm --clean
 
 clean: ## Borra artefactos de build, cache y cobertura
