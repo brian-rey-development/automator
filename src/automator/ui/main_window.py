@@ -152,6 +152,19 @@ class MainWindow(ctk.CTkFrame):
             command=command,
         )
 
+    def _ghost_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
+        return ctk.CTkButton(
+            parent,
+            text=text,
+            font=self._f_body,
+            height=40,
+            corner_radius=CORNER_RADIUS,
+            fg_color="transparent",
+            hover_color=Palette.SURFACE_ALT,
+            text_color=Palette.MUTED,
+            command=command,
+        )
+
     def _hint(self, parent: tk.Misc, text: str) -> ctk.CTkLabel:
         return ctk.CTkLabel(parent, text=text, font=self._f_hint, text_color=Palette.MUTED, anchor="w", justify="left")
 
@@ -389,21 +402,27 @@ class MainWindow(ctk.CTkFrame):
     def _build_history_view(self) -> None:
         self._history_view.grid_columnconfigure(0, weight=1)
         self._history_view.grid_rowconfigure(2, weight=1)
-        ctk.CTkLabel(self._history_view, text="Historial", font=self._f_h1, text_color=Palette.TEXT).grid(
-            row=0, column=0, sticky="w", pady=(0, 4)
-        )
-        self._hint(self._history_view, "Todo lo procesado queda registrado, incluso tras cerrar la app.").grid(
-            row=0, column=0, sticky="w", pady=(34, 12)
-        )
+        self._build_history_header()
         self._build_history_toolbar()
         self._build_history_table()
+
+    def _build_history_header(self) -> None:
+        header = ctk.CTkFrame(self._history_view, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        ctk.CTkLabel(header, text="Historial", font=self._f_h1, text_color=Palette.TEXT).pack(anchor="w")
+        self._hint(header, "Todo lo procesado queda registrado, incluso tras cerrar la app.").pack(
+            anchor="w", pady=(4, 0)
+        )
 
     def _build_history_toolbar(self) -> None:
         bar = ctk.CTkFrame(self._history_view, fg_color="transparent")
         bar.grid(row=1, column=0, sticky="ew", pady=(0, 16))
-        self._secondary_button(bar, "Actualizar", self._refresh_history).pack(side="left", padx=(0, 10))
-        self._secondary_button(bar, "Deshacer ultimo movimiento", self._undo_last).pack(side="left", padx=(0, 10))
-        self._secondary_button(bar, "Reintentar pendientes", self._reprocess_pending).pack(side="left")
+        # Jerarquia: accion protagonista a la izquierda, refrescar como control sutil a la derecha.
+        primary = self._primary_button(bar, "Reintentar pendientes", self._reprocess_pending)
+        primary.configure(height=40)
+        primary.pack(side="left", padx=(0, 10))
+        self._secondary_button(bar, "Deshacer ultimo movimiento", self._undo_last).pack(side="left")
+        self._ghost_button(bar, "Actualizar", self._refresh_history).pack(side="right")
 
     def _build_history_table(self) -> None:
         card = ctk.CTkFrame(self._history_view, fg_color=Palette.SURFACE, corner_radius=CORNER_RADIUS)
