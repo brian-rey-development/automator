@@ -1,66 +1,73 @@
-# Automator - Clasificador de facturas AFIP
+# Automator - AFIP invoice classifier
 
-Autor: Brian Rey
+Author: Brian Rey
 
-Aplicacion de escritorio que vigila una carpeta de descargas, lee cada factura
-en PDF, detecta el tipo de comprobante, el numero, el proveedor y la sociedad
-compradora (por CUIT), y archiva el PDF renombrado en la carpeta correcta.
+Desktop application that watches a downloads folder, reads every invoice PDF,
+detects the voucher type, its number, the supplier and the buying company (by
+CUIT), and files the renamed PDF into the right folder.
 
-Reemplaza al script original de una sola pieza por una aplicacion completa con
-interfaz grafica moderna, configuracion persistente, manejo de errores robusto
-y una bateria de tests.
+It replaces the original single-file script with a full application: a modern
+graphical interface, persistent configuration, robust error handling and a test
+suite.
 
-No trae ninguna empresa ni CUIT precargado: todo se configura desde la interfaz.
-En el primer arranque, un asistente ayuda a definir lo minimo.
+It ships with no company or CUIT preloaded: everything is configured from the
+interface. On first launch, a wizard helps you set up the minimum needed.
 
-## Caracteristicas
+## Guiding principle
 
-- Interfaz moderna (CustomTkinter) pensada para usarse sin experiencia previa:
-  etiquetas claras, textos de ayuda, selectores de carpeta y un asistente de
-  primera vez que guia el setup inicial.
-- Deteccion de tipo y letra de comprobante por codigo AFIP, con respaldo por texto.
-- Ruteo por CUIT a la carpeta de cada sociedad, configurable desde la interfaz.
-- Estructura de carpetas configurable con plantilla (por proveedor y, si se
-  quiere, por ano y mes de la fecha de emision).
-- Historial de auditoria persistente (SQLite): todo lo procesado queda
-  registrado y sobrevive al cierre. Incluye deshacer el ultimo movimiento y
-  reintentar lo pendiente tras ajustar la configuracion.
-- Deteccion de duplicados: una factura ya archivada (mismo proveedor, numero y
-  tipo) va a `_DUPLICADOS` en vez de archivarse dos veces.
-- Carpeta "para revisar" automatica cuando la extraccion no es confiable o
-  aparecen varias sociedades propias, para no archivar mal sin que nadie se entere.
-- Aviso persistente de pendientes leido de las carpetas, con notificacion del
-  sistema opcional cuando aparecen nuevos.
-- Procesa lo que ya estaba en la carpeta al iniciar y reintenta de forma
-  periodica los archivos que hayan quedado pendientes.
-- Espera a que termine la descarga antes de mover (evita archivos a medio bajar).
-- Sin sobrescrituras: si el nombre existe, agrega ` (2)`, ` (3)`, etc.
-- Cuarentena automatica de PDFs ilegibles o con errores, sin frenar el monitor.
-- Configuracion validada e inmutable, guardada de forma atomica y con
-  recuperacion si el archivo se corrompe (no puede dejar la app sin abrir).
-- Modo de prueba para ver que haria sin mover nada, y logs rotativos.
+**No invoice is ever misfiled or lost silently.** On any uncertainty (supplier
+not detected, ambiguous buyer, unreadable PDF) the file goes to review or
+quarantine, never to a guessed destination. Every change must preserve this
+invariant.
 
-## Requisitos
+## Features
 
-- Python 3.11 o superior.
-- Windows para el ejecutable final (el codigo corre tambien en macOS y Linux).
+- Modern interface (CustomTkinter) designed to be used with no prior experience:
+  clear labels, help text, folder pickers and a first-run wizard that guides the
+  initial setup.
+- Voucher type and letter detection by AFIP code, with a text-based fallback.
+- Routing by CUIT to each company folder, configurable from the interface.
+- Configurable folder structure via a template (by supplier and, optionally, by
+  the year and month of the issue date).
+- Persistent audit history (SQLite): everything processed is recorded and
+  survives a restart. Includes undo of the last move and retry of pending files
+  after adjusting the configuration.
+- Duplicate detection: an already-filed invoice (same supplier, number and type)
+  goes to `_DUPLICADOS` instead of being filed twice.
+- Automatic "to review" folder when extraction is not reliable or several of your
+  own companies appear, so nothing is misfiled without anyone noticing.
+- Persistent pending notice read from the folders, with an optional system
+  notification when new ones appear.
+- Processes whatever was already in the folder on startup and periodically
+  retries files that were left pending.
+- Waits for the download to finish before moving (avoids half-downloaded files).
+- No overwrites: if the name already exists, it appends ` (2)`, ` (3)`, etc.
+- Automatic quarantine of unreadable or failing PDFs, without stopping the monitor.
+- Validated, immutable configuration, saved atomically and with recovery if the
+  file gets corrupted (it can never leave the app unable to open).
+- Dry-run mode to preview what it would do without moving anything, and rotating logs.
 
-## Uso en desarrollo
+## Requirements
 
-Con `make` (recomendado):
+- Python 3.11 or newer.
+- Windows for the final executable (the code also runs on macOS and Linux).
+
+## Development usage
+
+With `make` (recommended):
 
 ```bash
-make install   # crea el entorno virtual e instala todo
-make run       # ejecuta la aplicacion
-make demo      # genera facturas de ejemplo y abre la app para probarla
-make check     # linting + tipos + tests
+make install   # creates the virtual environment and installs everything
+make run       # runs the application
+make demo      # generates sample invoices and opens the app to try it
+make check     # linting + types + tests
 ```
 
-`make demo` crea PDFs de ejemplo en la carpeta de entrada que cubren todos los
-casos (archivado por sociedad, sin clasificar, para revisar y cuarentena). Al
-abrir la app, apreta "Iniciar" para verlos procesarse en tiempo real.
+`make demo` creates sample PDFs in the configured input folder covering every
+case (filed by company, unclassified, to review and quarantine). When the app
+opens, press "Iniciar" to watch them being processed in real time.
 
-Sin `make`:
+Without `make`:
 
 ```powershell
 python -m venv .venv
@@ -69,66 +76,76 @@ pip install -e ".[dev]"
 python -m automator
 ```
 
-En macOS o Linux el equivalente es `python3 -m venv .venv && source .venv/bin/activate`.
-No hace falta `uv`; si lo tenes, `uv pip install -e ".[dev]"` tambien funciona.
+On macOS or Linux the equivalent is `python3 -m venv .venv && source .venv/bin/activate`.
+`uv` is not required; if you have it, `uv pip install -e ".[dev]"` works too.
 
-Para instalar los hooks de calidad antes de cada commit: `pre-commit install`.
+For a bit-for-bit reproducible install there is a lockfile (`uv.lock`): with
+[uv](https://docs.astral.sh/uv/), `uv sync --extra dev` installs exactly the same
+versions. Regenerate the lock with `make lock` when dependencies change.
 
-## Generar el ejecutable de Windows
+To install the quality hooks before each commit: `pre-commit install`.
+
+## Building the Windows executable
 
 ```powershell
 .\scripts\build_windows.ps1
 ```
 
-El ejecutable queda en `dist\Automator.exe`. Es un unico archivo, sin consola,
-que se puede copiar y ejecutar en cualquier PC con Windows. El script genera
-primero el icono de marca (`assets\automator.ico`).
+The executable lands in `dist\Automator.exe`. It is a single, console-less file
+that can be copied and run on any Windows PC. The script generates the brand icon
+(`assets\automator.ico`) first.
 
-### Instalador (opcional)
+### Installer (optional)
 
-Con [Inno Setup](https://jrsoftware.org/isinfo.php) instalado, compilar el
-instalador con acceso directo en el menu inicio y opcion de inicio automatico:
+With [Inno Setup](https://jrsoftware.org/isinfo.php) installed, build the
+installer with a start-menu shortcut and an auto-start option:
 
 ```powershell
 iscc installer\automator.iss
 ```
 
-Queda en `dist\installer\Automator-Setup-1.0.0.exe`.
+It lands in `dist\installer\Automator-Setup-1.0.0.exe`.
 
-## Calidad
+## Quality
 
 ```bash
-ruff check .      # linting (rapido)
-ruff format .     # formateo
-mypy              # tipos estrictos
-pytest            # tests con cobertura del nucleo
+ruff check .      # linting (fast)
+ruff format .     # formatting
+mypy              # strict types
+pytest            # tests with core coverage
 ```
 
-## Arquitectura
+Continuous integration runs the exact same commands on Python 3.11, 3.12 and 3.13
+(UI smoke tests run under xvfb), plus a Windows job that builds the executable on
+every push. Core coverage has an 80% floor enforced in CI.
 
-El proyecto separa el nucleo puro (sin efectos secundarios y 100% testeable) de
-los servicios con entrada/salida y de la interfaz.
+## Architecture
+
+The project separates the pure core (no side effects, 100% testable) from the
+services that do input/output and from the interface.
 
 ```
 src/automator/
-  domain/      Modelos, parser, nombres y clasificacion (logica pura)
-  services/    Lectura de PDF, IO de archivos, watcher y motor de procesamiento
-  ui/          Interfaz de escritorio (CustomTkinter)
-  config.py    Modelo de configuracion validado y persistencia
-tests/         Bateria de tests del nucleo y los servicios
+  domain/      Models, parser, naming and classification (pure logic)
+  services/    PDF reading, file IO, watcher and processing engine
+  ui/          Desktop interface (CustomTkinter)
+  config.py    Validated configuration model and persistence
+tests/         Core and services test suite
 ```
 
-El motor corre en un hilo de fondo y se comunica con la interfaz mediante una
-cola de eventos, respetando que Tkinter no es seguro entre hilos.
+The engine runs on a background thread and talks to the interface through an
+event queue, respecting the fact that Tkinter is not thread-safe.
 
-## Documentacion
+## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) - capas, concurrencia y flujo.
-- [`docs/features.md`](docs/features.md) - funcionalidades en detalle.
-- [`docs/configuration.md`](docs/configuration.md) - campos y plantilla de carpetas.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) - flujo de desarrollo y estandares.
-- [`CHANGELOG.md`](CHANGELOG.md) - historial de versiones.
+- [`docs/architecture.md`](docs/architecture.md) - layers, concurrency and flow.
+- [`docs/features.md`](docs/features.md) - features in detail.
+- [`docs/configuration.md`](docs/configuration.md) - fields and the folder template.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) - development flow and standards.
+- [`CHANGELOG.md`](CHANGELOG.md) - version history.
 
-## Licencia
+## License
 
-MIT. Ver [`LICENSE`](LICENSE).
+MIT. See [`LICENSE`](LICENSE).
+</content>
+</invoke>
