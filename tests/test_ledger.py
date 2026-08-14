@@ -24,6 +24,17 @@ def _result(outcome: ProcessOutcome, destination: Path | None, invoice: ParsedIn
     )
 
 
+def test_source_seen_tracks_processed_files(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "h.db")
+    signature = "/descargas/f.pdf|1024|1700000000"
+    assert not ledger.source_seen(signature)
+    ledger.mark_source_seen(signature)
+    assert ledger.source_seen(signature)
+    ledger.mark_source_seen(signature)  # idempotente, no debe fallar
+    assert ledger.source_seen(signature)
+    ledger.close()
+
+
 def test_record_and_recent(tmp_path: Path) -> None:
     ledger = Ledger(tmp_path / "h.db")
     ledger.record(_result(ProcessOutcome.MOVED, tmp_path / "a.pdf", _invoice()))

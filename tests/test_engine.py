@@ -11,6 +11,7 @@ from automator.config import AppConfig
 from automator.domain.models import ProcessOutcome
 from automator.services import engine as engine_module
 from automator.services.engine import EngineEvent, EngineEventType, ProcessingEngine
+from automator.services.ledger import Ledger
 from tests.conftest import FACTURA_A_TEXT
 
 
@@ -77,6 +78,25 @@ def test_failed_start_emits_error_and_leaves_no_running_engine(
     assert not engine.is_running  # No queda worker huerfano.
     assert any(event.type is EngineEventType.ERROR for event in events)
     assert all(event.type is not EngineEventType.STARTED for event in events)
+
+
+def test_copy_mode_does_not_reprocess_seen_source(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path], tmp_path: Path
+) -> None:
+    ledger = Ledger(tmp_path / "history.db")
+    config = make_config(copy_files=True)
+    source = dummy_pdf("factura.pdf")
+    events: list[EngineEvent] = []
+    engine = ProcessingEngine(lambda: config, events.append, extractor=lambda _path: FACTURA_A_TEXT, ledger=ledger)
+
+    result = engine.process_now(source)
+    assert result.outcome is ProcessOutcome.MOVED
+    assert source.exists()  # copiado: el original sigue en la entrada
+
+    events.clear()
+    engine.process_existing()  # el rescan lo vuelve a ver, pero no debe reprocesarlo
+    assert not any(event.type is EngineEventType.DETECTED for event in events)
+    ledger.close()
 
 
 def test_sink_errors_do_not_crash_engine(

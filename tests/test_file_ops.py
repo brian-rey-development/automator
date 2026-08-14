@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from automator.services import file_ops
-from automator.services.file_ops import is_pdf, move_file, unique_destination, wait_until_stable
+from automator.services.file_ops import copy_file, is_pdf, move_file, unique_destination, wait_until_stable
 
 
 def _force_windows(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -63,6 +63,25 @@ def test_move_file_does_not_overwrite(tmp_path: Path) -> None:
     source = tmp_path / "origen.pdf"
     source.write_text("nuevo")
     destination = move_file(source, target_dir, "final.pdf")
+    assert destination == target_dir / "final (2).pdf"
+
+
+def test_copy_file_keeps_source_and_creates_copy(tmp_path: Path) -> None:
+    source = tmp_path / "origen.pdf"
+    source.write_text("contenido")
+    destination = copy_file(source, tmp_path / "sub" / "carpeta", "final.pdf")
+    assert destination == tmp_path / "sub" / "carpeta" / "final.pdf"
+    assert destination.read_text() == "contenido"
+    assert source.exists()
+
+
+def test_copy_file_does_not_overwrite(tmp_path: Path) -> None:
+    target_dir = tmp_path / "destino"
+    target_dir.mkdir()
+    (target_dir / "final.pdf").write_text("existente")
+    source = tmp_path / "origen.pdf"
+    source.write_text("nuevo")
+    destination = copy_file(source, target_dir, "final.pdf")
     assert destination == target_dir / "final (2).pdf"
 
 

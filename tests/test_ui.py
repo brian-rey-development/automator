@@ -85,10 +85,12 @@ def test_collect_config_roundtrips_widget_values(window: MainWindow, tmp_path: P
     window._quarantine_var.set(str(tmp_path / "salida" / "_err"))
     window._timeout_var.set("15")
     window._template_var.set("{year}/{supplier}")
+    window._copy_var.set(True)
     config = window._collect_config()
     assert config is not None
     assert config.stability_timeout_s == 15.0
     assert config.destination_template == "{year}/{supplier}"
+    assert config.copy_files is True
 
 
 def test_toggle_button_reflects_state(window: MainWindow) -> None:

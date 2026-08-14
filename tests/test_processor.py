@@ -53,6 +53,32 @@ def test_dry_run_does_not_move_file(make_config: Callable[..., AppConfig], dummy
     assert source.exists()
 
 
+def test_copy_mode_keeps_original_and_places_copy(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config(copy_files=True)
+    source = dummy_pdf("descarga.pdf")
+    result = _processor(config, FACTURA_A_TEXT).process(source)
+
+    folder = config.folder_for_cuit(CUIT_ONE) / "PROVEEDOR EJEMPLO SRL"
+    expected = folder / "PROVEEDOR EJEMPLO SRL FC A 0001-00000123.pdf"
+    assert result.outcome is ProcessOutcome.MOVED
+    assert expected.exists()
+    assert source.exists()  # el original se conserva en la carpeta de entrada
+
+
+def test_copy_mode_quarantine_keeps_original(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config(copy_files=True)
+    source = dummy_pdf("ilegible.pdf")
+    result = _processor(config, "").process(source)  # texto vacio: PDF ilegible
+    assert result.outcome is ProcessOutcome.QUARANTINED
+    assert result.destination is not None
+    assert result.destination.exists()
+    assert source.exists()
+
+
 def test_empty_text_is_quarantined(make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]) -> None:
     config = make_config()
     source = dummy_pdf("vacio.pdf")

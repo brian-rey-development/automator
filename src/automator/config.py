@@ -110,6 +110,9 @@ class AppConfig(BaseModel):
     # {supplier} {society} {year} {month} {day}. Por defecto solo por proveedor.
     destination_template: str = "{supplier}"
     notify: bool = True  # Avisos del sistema cuando algo necesita atencion.
+    # Copiar en vez de mover: deja el original en la carpeta de entrada. El motor
+    # recuerda cada archivo ya procesado (en el ledger) para no reprocesarlo.
+    copy_files: bool = False
 
     @model_validator(mode="after")
     def _reject_duplicate_cuits(self) -> AppConfig:

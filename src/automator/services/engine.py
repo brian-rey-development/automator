@@ -7,6 +7,7 @@ Es agnostico a la interfaz grafica: comunica eventos a traves de un callback
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import threading
 from collections.abc import Callable
@@ -27,6 +28,27 @@ logger = logging.getLogger(__name__)
 _WORKER_JOIN_TIMEOUT_S = 10.0
 _RESCAN_INTERVAL_S = 60.0  # Red de seguridad: reintenta archivos que el watcher pudo perderse.
 _SENTINEL = object()  # Marca de fin de cola para detener el worker.
+
+# Resultados que dejaron una copia colocada: en modo copiar se marcan como vistos
+# para no reprocesar el original que queda en la carpeta de entrada.
+_COPY_PLACED = frozenset(
+    {
+        ProcessOutcome.MOVED,
+        ProcessOutcome.UNCLASSIFIED,
+        ProcessOutcome.DUPLICATE,
+        ProcessOutcome.NEEDS_REVIEW,
+        ProcessOutcome.QUARANTINED,
+    }
+)
+
+
+def _source_signature(path: Path) -> str | None:
+    """Firma estable de un archivo de origen (ruta, tamano y fecha) o None si no se puede leer."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return f"{os.path.abspath(path)}|{stat.st_size}|{int(stat.st_mtime)}"
 
 
 def _list_pdfs(folder: Path) -> list[Path]:
@@ -206,6 +228,7 @@ class ProcessingEngine:
         """Procesa un archivo de forma sincronica (util para tests y CLI)."""
         result = self._processor.process(path)
         self._record(result)
+        self._mark_if_copied(path, result.outcome)
         self._emit(EngineEvent(EngineEventType.RESULT, result.message, path, result))
         return result
 
@@ -225,15 +248,34 @@ class ProcessingEngine:
 
     def _enqueue(self, path: Path) -> None:
         # Camino del watcher y del backlog inicial: cuenta como "detectado".
-        if not self._reserve(path):
+        if self._already_processed(path) or not self._reserve(path):
             return
         self._emit(EngineEvent(EngineEventType.DETECTED, path.name, path))
         self._queue.put(path)
 
     def _requeue(self, path: Path) -> None:
         # Camino del rescan: reintenta sin volver a contar como "detectado".
-        if self._reserve(path):
+        if not self._already_processed(path) and self._reserve(path):
             self._queue.put(path)
+
+    def _already_processed(self, path: Path) -> bool:
+        # Solo aplica al modo copiar: el original queda en la entrada, asi que se
+        # recuerda cual ya se proceso para no volver a copiarlo en cada rescan.
+        if self._ledger is None or not self._config_provider().copy_files:
+            return False
+        signature = _source_signature(path)
+        return signature is not None and self._ledger.source_seen(signature)
+
+    def _mark_if_copied(self, path: Path, outcome: ProcessOutcome) -> None:
+        if self._ledger is None or outcome not in _COPY_PLACED or not self._config_provider().copy_files:
+            return
+        signature = _source_signature(path)
+        if signature is None:
+            return
+        try:
+            self._ledger.mark_source_seen(signature)
+        except Exception:
+            logger.exception("No se pudo marcar %s como procesado", path)
 
     def _reserve(self, path: Path) -> bool:
         with self._lock:
@@ -253,6 +295,7 @@ class ProcessingEngine:
         try:
             result = self._processor.process(path)
             self._record(result)
+            self._mark_if_copied(path, result.outcome)
             self._emit(EngineEvent(EngineEventType.RESULT, result.message, path, result))
         except Exception as exc:
             logger.exception("Error inesperado procesando %s", path)

@@ -34,6 +34,10 @@ empresa: se definen las propias.
 ### Opciones
 
 - **Modo de prueba**: no mueve nada, solo muestra que haria.
+- **Copiar en vez de mover**: deja el original en la carpeta de entrada y coloca
+  una copia en el destino. La app recuerda cada archivo ya procesado (por ruta,
+  tamano y fecha, en el historial) para no volver a copiarlo en cada rescan. Por
+  defecto esta desactivado: mueve (la carpeta de entrada se vacia sola).
 - **Esperar a que termine la descarga**: evita mover archivos a medio bajar.
 - **Espera maxima (segundos)**: 0 a 120.
 - **Notificaciones**: aviso del sistema cuando aumentan los pendientes.

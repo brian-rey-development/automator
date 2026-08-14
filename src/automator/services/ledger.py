@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS records (
     reverted INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_records_identity ON records(identity);
+CREATE TABLE IF NOT EXISTS processed_sources (
+    signature TEXT PRIMARY KEY,
+    ts TEXT NOT NULL
+);
 """
 
 
@@ -118,6 +122,21 @@ class Ledger:
     def mark_reverted(self, record_id: int) -> None:
         with self._lock:
             self._conn.execute("UPDATE records SET reverted = 1 WHERE id = ?", (record_id,))
+            self._conn.commit()
+
+    def source_seen(self, signature: str) -> bool:
+        """True si ese archivo de origen ya fue procesado (para el modo copiar)."""
+        with self._lock:
+            cursor = self._conn.execute("SELECT 1 FROM processed_sources WHERE signature = ? LIMIT 1", (signature,))
+            return cursor.fetchone() is not None
+
+    def mark_source_seen(self, signature: str, timestamp: str | None = None) -> None:
+        """Recuerda un archivo de origen ya procesado, para no reprocesarlo al copiar."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO processed_sources (signature, ts) VALUES (?, ?)",
+                (signature, timestamp or datetime.now().isoformat(timespec="seconds")),
+            )
             self._conn.commit()
 
     def close(self) -> None:

@@ -67,6 +67,18 @@ def move_file(source: Path, target_dir: Path, filename: str) -> Path:
     return target
 
 
+def copy_file(source: Path, target_dir: Path, filename: str) -> Path:
+    """Copia el archivo a la carpeta destino evitando sobrescrituras.
+
+    Deja el original intacto. copy2 preserva las fechas del archivo, asi la
+    firma que usa el motor para no reprocesar se mantiene estable.
+    """
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = unique_destination(target_dir / filename)
+    shutil.copy2(_os_path(source), _os_path(target))
+    return target
+
+
 def _safe_size(path: Path) -> int:
     try:
         return path.stat().st_size

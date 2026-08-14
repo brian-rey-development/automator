@@ -119,9 +119,9 @@ class InvoiceProcessor:
                 source, ProcessOutcome.DRY_RUN, target_dir / filename, invoice, "Simulacion: no se movio el archivo."
             )
         try:
-            destination = file_ops.move_file(source, target_dir, filename)
+            destination = _place(source, target_dir, filename, config)
         except Exception as exc:
-            logger.exception("Fallo al mover %s", source)
+            logger.exception("Fallo al archivar %s", source)
             return self._quarantine(source, config, f"No se pudo archivar: {exc}")
         return _result(source, outcome, destination, invoice, message)
 
@@ -130,7 +130,7 @@ class InvoiceProcessor:
         if config.dry_run or not source.exists():
             return _result(source, ProcessOutcome.ERROR, None, None, message)
         try:
-            destination = file_ops.move_file(source, config.quarantine_folder, source.name)
+            destination = _place(source, config.quarantine_folder, source.name, config)
         except Exception:
             logger.exception("No se pudo poner en cuarentena %s; queda en la carpeta de entrada para reintento", source)
             return _result(source, ProcessOutcome.ERROR, None, None, message)
@@ -147,6 +147,13 @@ def _is_reliable(invoice: ParsedInvoice, config: AppConfig) -> bool:
     if not invoice.has_number or not invoice.has_supplier:
         return False
     return invoice.supplier.casefold() not in config.society_names()
+
+
+def _place(source: Path, target_dir: Path, filename: str, config: AppConfig) -> Path:
+    """Coloca el archivo en su destino: copia (deja el original) o mueve, segun la config."""
+    if config.copy_files:
+        return file_ops.copy_file(source, target_dir, filename)
+    return file_ops.move_file(source, target_dir, filename)
 
 
 def _result(

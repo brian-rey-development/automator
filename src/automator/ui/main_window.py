@@ -122,6 +122,7 @@ class MainWindow(ctk.CTkFrame):
         self._dry_run_var = tk.BooleanVar()
         self._stability_var = tk.BooleanVar()
         self._notify_var = tk.BooleanVar()
+        self._copy_var = tk.BooleanVar()
         self._timeout_var = tk.StringVar()
         self._template_var = tk.StringVar()
         self._state_var = tk.StringVar(value="Detenido")  # Estado corto para el pill del sidebar.
@@ -663,6 +664,17 @@ class MainWindow(ctk.CTkFrame):
         )
         ctk.CTkCheckBox(
             body,
+            text="Copiar los archivos en vez de moverlos (deja los originales donde estan)",
+            font=self._f_body,
+            variable=self._copy_var,
+        ).grid(row=6, column=0, sticky="w", pady=(0, 4))
+        self._hint(
+            body,
+            "Al copiar, los PDF quedan en la carpeta de entrada. La app recuerda cuales ya "
+            "proceso para no volver a copiarlos.",
+        ).grid(row=7, column=0, sticky="w", pady=(0, 10))
+        ctk.CTkCheckBox(
+            body,
             text="Esperar a que termine la descarga antes de procesar",
             font=self._f_body,
             variable=self._stability_var,
@@ -737,6 +749,7 @@ class MainWindow(ctk.CTkFrame):
         self._dry_run_var.set(config.dry_run)
         self._stability_var.set(config.wait_for_stability)
         self._notify_var.set(config.notify)
+        self._copy_var.set(config.copy_files)
         self._timeout_var.set(str(config.stability_timeout_s))
         self._template_var.set(config.destination_template)
         self._societies = list(config.societies)
@@ -775,6 +788,7 @@ class MainWindow(ctk.CTkFrame):
             stability_timeout_s=timeout,
             destination_template=self._template_var.get().strip() or "{supplier}",
             notify=self._notify_var.get(),
+            copy_files=self._copy_var.get(),
         )
 
     # --- Acciones de sociedades --------------------------------------------
