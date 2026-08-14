@@ -8,7 +8,7 @@ from pathlib import Path
 from automator.config import AppConfig, SocietyMapping
 from automator.domain.models import ProcessOutcome
 from automator.services.processor import InvoiceProcessor
-from tests.conftest import CUIT_ANDREOLI, CUIT_CUENCA, FACTURA_A_TEXT
+from tests.conftest import CUIT_ONE, CUIT_TWO, FACTURA_A_TEXT
 
 
 def _processor(config: AppConfig, text: str) -> InvoiceProcessor:
@@ -23,9 +23,8 @@ def test_moves_invoice_to_matching_society_folder(
     source = dummy_pdf("descarga.pdf")
     result = _processor(config, FACTURA_A_TEXT).process(source)
 
-    # El punto final de "S.R.L." se elimina por compatibilidad con Windows.
-    folder = config.folder_for_cuit(CUIT_ANDREOLI) / "ACME INSUMOS S.R.L"
-    expected = folder / "ACME INSUMOS S.R.L FC A 0001-00000123.pdf"
+    folder = config.folder_for_cuit(CUIT_ONE) / "PROVEEDOR EJEMPLO SRL"
+    expected = folder / "PROVEEDOR EJEMPLO SRL FC A 0001-00000123.pdf"
     assert result.outcome is ProcessOutcome.MOVED
     assert result.destination == expected
     assert expected.exists()
@@ -112,14 +111,13 @@ def test_ambiguous_intercompany_invoice_goes_to_review(
     # Aparecen dos sociedades propias: no se puede decidir la compradora, va a revision.
     config = make_config(
         societies=(
-            SocietyMapping(cuit=CUIT_ANDREOLI, name="ANDREOLI S.A.", folder=tmp_path / "salida" / "A"),
-            SocietyMapping(cuit=CUIT_CUENCA, name="CUENCA S.A.", folder=tmp_path / "salida" / "C"),
+            SocietyMapping(cuit=CUIT_ONE, name="COMPRADORA UNO SA", folder=tmp_path / "salida" / "A"),
+            SocietyMapping(cuit=CUIT_TWO, name="COMPRADORA DOS SA", folder=tmp_path / "salida" / "C"),
         )
     )
     source = dummy_pdf("intercompany.pdf")
     text = (
-        f"FACTURA\nCod. 01\nRazon Social: PROVEEDOR X\nComp. Nro: 0001-00000001\n"
-        f"CUIT: {CUIT_ANDREOLI}\nCUIT: {CUIT_CUENCA}\n"
+        f"FACTURA\nCod. 01\nRazon Social: PROVEEDOR X\nComp. Nro: 0001-00000001\nCUIT: {CUIT_ONE}\nCUIT: {CUIT_TWO}\n"
     )
     result = _processor(config, text).process(source)
     assert result.outcome is ProcessOutcome.NEEDS_REVIEW
@@ -133,6 +131,6 @@ def test_supplier_equal_to_society_goes_to_review(
     # Si el proveedor detectado es la propia sociedad, se leyo al comprador: a revisar.
     config = make_config()
     source = dummy_pdf("comprador.pdf")
-    text = "FACTURA\nCod. 01\nRazon Social: ANDREOLI S.A.\nComp. Nro: 0001-00000009\n"
+    text = "FACTURA\nCod. 01\nRazon Social: COMPRADORA UNO SA\nComp. Nro: 0001-00000009\n"
     result = _processor(config, text).process(source)
     assert result.outcome is ProcessOutcome.NEEDS_REVIEW

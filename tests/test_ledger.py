@@ -14,7 +14,7 @@ def _invoice(supplier: str = "ACME S.A.", number: str = "00000123") -> ParsedInv
         sales_point="0001",
         number=number,
         supplier=supplier,
-        buyer_cuit="33554380749",
+        buyer_cuit="30111111110",
     )
 
 

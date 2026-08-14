@@ -9,39 +9,39 @@ import pytest
 
 from automator.config import AppConfig, SocietyMapping
 
-# CUIT de sociedades de prueba (coinciden con los textos de ejemplo).
-CUIT_ANDREOLI = "33554380749"
-CUIT_CUENCA = "33627088499"
+# CUIT ficticios de sociedades de prueba (coinciden con los textos de ejemplo).
+CUIT_ONE = "30111111110"
+CUIT_TWO = "30222222220"
 
 FACTURA_A_TEXT = """ORIGINAL
 FACTURA
 A
 Cod. 01
-Razon Social: ACME INSUMOS S.R.L.
-CUIT: 30-11111111-2
+Razon Social: PROVEEDOR EJEMPLO SRL
+CUIT: 30-99999999-9
 Fecha de Emision: 01/08/2026
 Punto de Venta: 0001    Comp. Nro: 00000123
 Periodo Facturado
-CUIT: 33-55438074-9
-Razon Social: ANDREOLI S.A.
+CUIT: 30-11111111-0
+Razon Social: COMPRADORA UNO SA
 """
 
 NOTA_CREDITO_B_TEXT = """ORIGINAL
 NOTA DE CREDITO
 B
 Cod. 08
-Razon Social: PROVEEDOR SUR S.A.
+Razon Social: PROVEEDOR DOS SA
 Punto de Venta: 0003    Comp. Nro: 00000045
-CUIT: 33-62708849-9
+CUIT: 30-22222222-0
 """
 
 NOTA_DEBITO_B_TEXT = """ORIGINAL
 NOTA DE DEBITO
 B
 Cod. 07
-Razon Social: LOGISTICA DEL PLATA
+Razon Social: PROVEEDOR TRES SA
 Punto de Venta: 0005    Comp. Nro: 00000009
-CUIT: 33-62708849-9
+CUIT: 30-22222222-0
 """
 
 COMBINED_NUMBER_TEXT = """FACTURA
@@ -68,7 +68,7 @@ def make_config(tmp_path: Path) -> Callable[..., AppConfig]:
             unknown_folder=base / "_SIN_CLASIFICAR",
             quarantine_folder=base / "_ERRORES",
             societies=[
-                SocietyMapping(cuit=CUIT_ANDREOLI, name="ANDREOLI S.A.", folder=base / "ANDREOLI" / "PROV"),
+                SocietyMapping(cuit=CUIT_ONE, name="COMPRADORA UNO SA", folder=base / "UNO" / "PROV"),
             ],
             dry_run=False,
             wait_for_stability=False,

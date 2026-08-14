@@ -18,8 +18,8 @@ from automator.config import (
 
 
 def test_cuit_is_normalized_to_digits() -> None:
-    society = SocietyMapping(cuit="33-55438074-9", name="ANDREOLI", folder=Path("/x"))
-    assert society.cuit == "33554380749"
+    society = SocietyMapping(cuit="30-11111111-0", name="EMPRESA EJEMPLO", folder=Path("/x"))
+    assert society.cuit == "30111111110"
 
 
 def test_cuit_with_wrong_length_is_rejected() -> None:
@@ -28,9 +28,9 @@ def test_cuit_with_wrong_length_is_rejected() -> None:
 
 
 def test_folder_for_cuit_returns_society_folder() -> None:
-    config = default_config()
-    known = config.societies[0]
-    assert config.folder_for_cuit(known.cuit) == known.folder
+    society = SocietyMapping(cuit="30111111110", name="EMPRESA EJEMPLO", folder=Path("/salida/empresa"))
+    config = default_config().model_copy(update={"societies": (society,)})
+    assert config.folder_for_cuit(society.cuit) == society.folder
 
 
 def test_folder_for_cuit_falls_back_to_unknown() -> None:
@@ -58,7 +58,7 @@ def test_ensure_folders_creates_all_targets(tmp_path: Path) -> None:
         base_output_folder=base,
         unknown_folder=base / "_sin",
         quarantine_folder=base / "_err",
-        societies=[SocietyMapping(cuit="33554380749", name="A", folder=base / "a")],
+        societies=[SocietyMapping(cuit="30111111110", name="A", folder=base / "a")],
     )
     config.ensure_folders()
     for folder in config.all_folders():
@@ -70,7 +70,7 @@ def test_config_snapshot_is_immutable() -> None:
     snapshot = store.get()
     with pytest.raises(ValidationError):  # frozen: no se puede mutar el snapshot.
         snapshot.dry_run = True  # type: ignore[misc]
-    assert store.get().societies  # El store sigue intacto.
+    assert store.get().dry_run is False  # El store sigue intacto.
 
 
 def test_stability_timeout_is_bounded() -> None:
@@ -92,8 +92,8 @@ def test_duplicate_cuits_are_rejected() -> None:
             unknown_folder=Path("/c"),
             quarantine_folder=Path("/d"),
             societies=[
-                SocietyMapping(cuit="33554380749", name="Uno", folder=Path("/x")),
-                SocietyMapping(cuit="33-55438074-9", name="Dos", folder=Path("/y")),
+                SocietyMapping(cuit="30111111110", name="Uno", folder=Path("/x")),
+                SocietyMapping(cuit="30-11111111-0", name="Dos", folder=Path("/y")),
             ],
         )
 
@@ -129,14 +129,14 @@ def test_config_store_set_replaces_config() -> None:
 
 def test_society_folder_must_be_absolute() -> None:
     with pytest.raises(ValidationError):
-        SocietyMapping(cuit="33554380749", name="X", folder=Path(""))
+        SocietyMapping(cuit="30111111110", name="X", folder=Path(""))
     with pytest.raises(ValidationError):
-        SocietyMapping(cuit="33554380749", name="X", folder=Path("relativa/sub"))
+        SocietyMapping(cuit="30111111110", name="X", folder=Path("relativa/sub"))
 
 
 def test_society_name_must_not_be_empty() -> None:
     with pytest.raises(ValidationError):
-        SocietyMapping(cuit="33554380749", name="   ", folder=Path("/x"))
+        SocietyMapping(cuit="30111111110", name="   ", folder=Path("/x"))
 
 
 def test_output_folder_inside_input_is_rejected() -> None:

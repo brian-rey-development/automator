@@ -8,8 +8,8 @@ from automator.domain.models import VoucherKind
 from automator.domain.parser import parse_invoice
 from tests.conftest import (
     COMBINED_NUMBER_TEXT,
-    CUIT_ANDREOLI,
-    CUIT_CUENCA,
+    CUIT_ONE,
+    CUIT_TWO,
     FACTURA_A_TEXT,
     NO_RAZON_SOCIAL_TEXT,
     NOTA_CREDITO_B_TEXT,
@@ -18,11 +18,11 @@ from tests.conftest import (
 
 
 def test_parses_factura_a_completely() -> None:
-    invoice = parse_invoice(FACTURA_A_TEXT, [CUIT_ANDREOLI])
+    invoice = parse_invoice(FACTURA_A_TEXT, [CUIT_ONE])
     assert invoice.voucher.label == "FC A"
     assert invoice.full_number == "0001-00000123"
-    assert invoice.supplier == "ACME INSUMOS S.R.L."
-    assert invoice.buyer_cuit == CUIT_ANDREOLI
+    assert invoice.supplier == "PROVEEDOR EJEMPLO SRL"
+    assert invoice.buyer_cuit == CUIT_ONE
 
 
 def test_detects_credit_note_kind_and_letter() -> None:
@@ -52,8 +52,8 @@ def test_supplier_unknown_when_no_razon_social_label() -> None:
 
 
 def test_matches_cuit_ignoring_separators() -> None:
-    invoice = parse_invoice(FACTURA_A_TEXT, [CUIT_ANDREOLI])
-    assert invoice.buyer_cuit == CUIT_ANDREOLI
+    invoice = parse_invoice(FACTURA_A_TEXT, [CUIT_ONE])
+    assert invoice.buyer_cuit == CUIT_ONE
 
 
 def test_returns_none_when_cuit_is_unknown() -> None:
@@ -63,15 +63,15 @@ def test_returns_none_when_cuit_is_unknown() -> None:
 
 
 def test_single_known_cuit_is_not_ambiguous() -> None:
-    invoice = parse_invoice(FACTURA_A_TEXT, [CUIT_ANDREOLI, CUIT_CUENCA])
-    assert invoice.buyer_cuit == CUIT_ANDREOLI
+    invoice = parse_invoice(FACTURA_A_TEXT, [CUIT_ONE, CUIT_TWO])
+    assert invoice.buyer_cuit == CUIT_ONE
     assert not invoice.ambiguous_buyer
 
 
 def test_two_known_cuits_are_marked_ambiguous() -> None:
     # Factura entre dos sociedades propias: no se puede decidir el comprador.
-    text = f"FACTURA\nCod. 01\nCUIT: {CUIT_ANDREOLI}\nCUIT: {CUIT_CUENCA}\n"
-    invoice = parse_invoice(text, [CUIT_ANDREOLI, CUIT_CUENCA])
+    text = f"FACTURA\nCod. 01\nCUIT: {CUIT_ONE}\nCUIT: {CUIT_TWO}\n"
+    invoice = parse_invoice(text, [CUIT_ONE, CUIT_TWO])
     assert invoice.buyer_cuit is None
     assert invoice.ambiguous_buyer
 

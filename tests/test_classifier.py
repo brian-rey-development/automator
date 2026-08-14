@@ -21,26 +21,26 @@ def _invoice(supplier: str, issue_date: date | None = None) -> ParsedInvoice:
 
 
 def test_destination_joins_base_with_sanitized_supplier() -> None:
-    base = Path("/salida/ANDREOLI")
+    base = Path("/salida/EMPRESA")
     result = destination_dir(_invoice("ACME S.A."), base)
     # Windows no admite carpetas terminadas en punto: se elimina el punto final.
     assert result == base / "ACME S.A"
 
 
 def test_destination_sanitizes_invalid_supplier() -> None:
-    base = Path("/salida/ANDREOLI")
+    base = Path("/salida/EMPRESA")
     result = destination_dir(_invoice("ACME: S.A. *"), base)
     assert result == base / "ACME S.A"
 
 
 def test_template_with_date_tokens() -> None:
-    base = Path("/salida/ANDREOLI")
+    base = Path("/salida/EMPRESA")
     invoice = _invoice("ACME S.A.", issue_date=date(2026, 8, 14))
     result = destination_dir(invoice, base, "{year}/{month}/{supplier}")
     assert result == base / "2026" / "08" / "ACME S.A"
 
 
 def test_template_falls_back_when_date_missing() -> None:
-    base = Path("/salida/ANDREOLI")
+    base = Path("/salida/EMPRESA")
     result = destination_dir(_invoice("ACME S.A."), base, "{year}/{supplier}")
     assert result == base / "sin_fecha" / "ACME S.A"

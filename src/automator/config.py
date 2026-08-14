@@ -9,7 +9,7 @@ import re
 import threading
 from pathlib import Path
 
-from platformdirs import user_config_dir, user_data_dir, user_log_dir
+from platformdirs import user_config_dir, user_data_dir, user_downloads_dir, user_log_dir
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
@@ -177,25 +177,18 @@ class AppConfig(BaseModel):
 
 
 def default_config() -> AppConfig:
-    """Configuracion inicial basada en la carpeta personal del usuario."""
+    """Configuracion inicial neutra, sin ninguna empresa precargada.
+
+    No se codifica ningun dato real: el usuario define sus sociedades y CUITs
+    desde la interfaz (o el asistente de primera vez). Arranca sin sociedades.
+    """
     home = Path.home()
-    base = home / "PRUEBA_COMPRAS"
+    base = home / "Automator" / "Facturas ordenadas"
     return AppConfig(
-        input_folder=home / "FACTURAS DESCARGADAS",
+        input_folder=Path(user_downloads_dir()),
         base_output_folder=base,
-        unknown_folder=base / "_FACTURAS_SIN_CLASIFICAR",
+        unknown_folder=base / "_SIN_CLASIFICAR",
         quarantine_folder=base / "_ERRORES",
-        societies=[
-            SocietyMapping(cuit="33554380749", name="ANDREOLI S.A.", folder=base / "ANDREOLI S.A." / "PROVEEDORES"),
-            SocietyMapping(
-                cuit="33627088499",
-                name="CUENCA DEL SALADO S.A.",
-                folder=base / "CUENCA DEL SALADO S.A." / "PROVEEDORES",
-            ),
-            SocietyMapping(
-                cuit="30710432089", name="PAMPA AGRICOLA S.A.", folder=base / "PAMPA AGRICOLA S.A." / "PROVEEDORES"
-            ),
-        ],
     )
 
 
