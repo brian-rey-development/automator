@@ -13,6 +13,8 @@ from pathlib import Path
 from platformdirs import user_config_dir, user_data_dir, user_downloads_dir, user_log_dir
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from automator.domain.filenames import sanitize_component
+
 logger = logging.getLogger(__name__)
 
 APP_NAME = "Automator"
@@ -23,6 +25,7 @@ _CUIT_WEIGHTS = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
 _MIN_STABILITY_TIMEOUT = 0.0
 _MAX_STABILITY_TIMEOUT = 120.0
 _TEMPLATE_TOKENS = {"supplier", "society", "year", "month", "day"}
+_ORDERS_NO_SOCIETY = "_SIN_SOCIEDAD"  # Subfolder for purchase orders with no identified buyer.
 
 
 def _is_valid_cuit(digits: str) -> bool:
@@ -114,6 +117,9 @@ class AppConfig(BaseModel):
     # Copy instead of move: leaves the original in the input folder. The engine
     # remembers each already-processed file (in the ledger) so it is not reprocessed.
     copy_files: bool = False
+    # Purchase orders are filed in their own top-level area, separate from invoices.
+    # Old configs without this field fall back to a sibling of the output folder.
+    orders_folder: Path = Field(default_factory=lambda: Path.home() / "Automator" / "Ordenes de compra")
 
     @model_validator(mode="after")
     def _reject_duplicate_cuits(self) -> AppConfig:
@@ -127,7 +133,7 @@ class AppConfig(BaseModel):
     def _reject_output_inside_input(self) -> AppConfig:
         # An output folder inside the input one would make the watcher detect
         # the just-archived files and reprocess them in an infinite loop.
-        outputs = [self.base_output_folder, self.unknown_folder, self.quarantine_folder]
+        outputs = [self.base_output_folder, self.unknown_folder, self.quarantine_folder, self.orders_folder]
         outputs.extend(society.folder for society in self.societies)
         if any(_is_within(folder, self.input_folder) for folder in outputs):
             raise ValueError("Las carpetas de salida no pueden estar dentro de la carpeta de entrada.")
@@ -158,12 +164,21 @@ class AppConfig(BaseModel):
     def society_names(self) -> set[str]:
         return {society.name.casefold() for society in self.societies}
 
+    def society_for_cuit(self, cuit: str | None) -> SocietyMapping | None:
+        if cuit is None:
+            return None
+        return next((society for society in self.societies if society.cuit == cuit), None)
+
     def folder_for_cuit(self, cuit: str | None) -> Path:
-        if cuit is not None:
-            for society in self.societies:
-                if society.cuit == cuit:
-                    return society.folder
-        return self.unknown_folder
+        society = self.society_for_cuit(cuit)
+        return society.folder if society is not None else self.unknown_folder
+
+    def orders_base_for(self, cuit: str | None) -> Path:
+        # Purchase orders live under orders_folder, split by buying company; when the
+        # company is unknown they still land somewhere visible, never lost.
+        society = self.society_for_cuit(cuit)
+        name = society.name if society is not None else _ORDERS_NO_SOCIETY
+        return self.orders_folder / sanitize_component(name)
 
     def all_folders(self) -> list[Path]:
         folders = [
@@ -173,6 +188,7 @@ class AppConfig(BaseModel):
             self.quarantine_folder,
             self.review_folder,
             self.duplicates_folder,
+            self.orders_folder,
         ]
         folders.extend(society.folder for society in self.societies)
         return folders
@@ -204,6 +220,7 @@ def default_config() -> AppConfig:
         base_output_folder=base,
         unknown_folder=base / "_SIN_CLASIFICAR",
         quarantine_folder=base / "_ERRORES",
+        orders_folder=home / "Automator" / "Ordenes de compra",
     )
 
 

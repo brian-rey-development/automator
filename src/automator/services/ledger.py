@@ -144,6 +144,13 @@ class Ledger:
             )
             self._conn.commit()
 
+    def clear(self) -> None:
+        """Wipe history and copy-mode signatures. Does not touch invoice files."""
+        with self._lock:
+            self._conn.execute("DELETE FROM records")
+            self._conn.execute("DELETE FROM processed_sources")
+            self._conn.commit()
+
     def close(self) -> None:
         with self._lock:
             self._conn.close()

@@ -24,4 +24,4 @@ def sanitize_component(name: str, fallback: str = _FALLBACK) -> str:
 def build_filename(invoice: ParsedInvoice) -> str:
     """Build the final PDF name from the extracted data."""
     supplier = sanitize_component(invoice.supplier)
-    return f"{supplier} {invoice.voucher.label} {invoice.full_number}.pdf"
+    return f"{supplier} {invoice.type_label} {invoice.full_number}.pdf"

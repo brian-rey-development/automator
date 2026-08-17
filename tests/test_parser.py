@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from automator.domain.models import VoucherKind
+from automator.domain.filenames import build_filename
+from automator.domain.models import DocumentType, VoucherKind
 from automator.domain.parser import parse_invoice
 from tests.conftest import (
     COMBINED_NUMBER_TEXT,
@@ -14,6 +15,8 @@ from tests.conftest import (
     NO_RAZON_SOCIAL_TEXT,
     NOTA_CREDITO_B_TEXT,
     NOTA_DEBITO_B_TEXT,
+    ORDEN_COMPRA_NO_CUIT_TEXT,
+    ORDEN_COMPRA_TEXT,
 )
 
 
@@ -139,3 +142,31 @@ def test_afip_code_ignores_long_numbers_like_cae() -> None:
 def test_has_number_flags_missing_number() -> None:
     assert parse_invoice("Documento sin numero").has_number is False
     assert parse_invoice(FACTURA_A_TEXT).has_number is True
+
+
+def test_parses_purchase_order() -> None:
+    invoice = parse_invoice(ORDEN_COMPRA_TEXT, [CUIT_ONE])
+    assert invoice.document_type is DocumentType.ORDEN_COMPRA
+    assert invoice.type_label == "OC"
+    assert invoice.full_number == "2026-00004046"
+    assert invoice.supplier == "RICARDO BARTOLI Y CIA S.R.L"
+    assert invoice.buyer_cuit == CUIT_ONE
+    assert invoice.buyer_name == "COMPRADORA UNO SA"
+
+
+def test_purchase_order_matches_cuit_across_mixed_formats() -> None:
+    # The OC prints the buyer CUIT without separators and the supplier CUIT with
+    # dashes: the buyer is still matched from the contiguous 11-digit form.
+    assert parse_invoice(ORDEN_COMPRA_TEXT, [CUIT_ONE]).buyer_cuit == CUIT_ONE
+
+
+def test_purchase_order_filename_uses_oc_tag() -> None:
+    invoice = parse_invoice(ORDEN_COMPRA_TEXT, [CUIT_ONE])
+    assert build_filename(invoice) == "RICARDO BARTOLI Y CIA S.R.L OC 2026-00004046.pdf"
+
+
+def test_purchase_order_without_cuit_keeps_buyer_name() -> None:
+    invoice = parse_invoice(ORDEN_COMPRA_NO_CUIT_TEXT)
+    assert invoice.document_type is DocumentType.ORDEN_COMPRA
+    assert invoice.buyer_cuit is None
+    assert invoice.buyer_name == "COMPRADORA UNO S.A."

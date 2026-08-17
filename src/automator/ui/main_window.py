@@ -41,6 +41,11 @@ _CUIT_LENGTH = 11
 _ICON_RETRY = "↻"  # circular arrow: retry
 _ICON_UNDO = "↶"  # return arrow: undo
 _ICON_REFRESH = "⟳"  # wide circular arrow: refresh
+_RESTORE_CONFIRM = (
+    "Se borra el historial de procesamiento: duplicados, revisiones y archivos ya vistos.\n\n"
+    "Los PDF no se mueven ni se eliminan.\n\n"
+    "Despues vas a poder reprocesar y revisar de nuevo. Continuar?"
+)
 
 _OUTCOME_LABELS: dict[ProcessOutcome, str] = {
     ProcessOutcome.MOVED: "Archivado",
@@ -119,6 +124,7 @@ class MainWindow(ctk.CTkFrame):
         self._output_var = tk.StringVar()
         self._unknown_var = tk.StringVar()
         self._quarantine_var = tk.StringVar()
+        self._orders_var = tk.StringVar()
         self._dry_run_var = tk.BooleanVar()
         self._stability_var = tk.BooleanVar()
         self._notify_var = tk.BooleanVar()
@@ -435,12 +441,16 @@ class MainWindow(ctk.CTkFrame):
         self._undo_btn = self._secondary_button(bar, f"{_ICON_UNDO}  Deshacer ultimo movimiento", self._undo_last)
         self._undo_btn.pack(side="left")
         self._ghost_button(bar, f"{_ICON_REFRESH}  Actualizar", self._refresh_history).pack(side="right")
+        self._restore_btn = self._ghost_button(bar, "Restaurar historial", self._restore_history)
+        self._restore_btn.pack(side="right", padx=(0, 10))
 
     def _update_history_actions(self) -> None:
         # Disables what cannot be used now: nothing to undo, or nothing pending.
         running = self._engine.is_running
+        has_history = self._ledger is not None and bool(self._ledger.recent(1))
         can_undo = not running and self._ledger is not None and self._ledger.last_undoable() is not None
         self._undo_btn.configure(state="normal" if can_undo else "disabled")
+        self._restore_btn.configure(state="normal" if (not running and has_history) else "disabled")
         self._retry_btn.configure(state="normal" if self._count_pending() > 0 else "disabled")
 
     def _build_history_table(self) -> None:
@@ -505,6 +515,19 @@ class MainWindow(ctk.CTkFrame):
         self._ledger.mark_reverted(record.id)
         messagebox.showinfo("Deshacer", f"Se devolvio {source.name} a la carpeta de entrada.")
         self._refresh_history()
+
+    def _restore_history(self) -> None:
+        if self._ledger is None:
+            messagebox.showerror("Restaurar historial", "No se pudo abrir el historial.")
+            return
+        if self._engine.is_running:
+            messagebox.showinfo("Restaurar historial", "Deten el monitor antes de restaurar.")
+            return
+        if not messagebox.askyesno("Restaurar historial", _RESTORE_CONFIRM, icon="warning"):
+            return
+        self._ledger.clear()
+        self._refresh_history()
+        messagebox.showinfo("Restaurar historial", "Historial vaciado. Los archivos siguen donde estaban.")
 
     def _reprocess_pending(self) -> None:
         def run() -> None:
@@ -726,6 +749,13 @@ class MainWindow(ctk.CTkFrame):
             self._quarantine_var,
             row=1,
         )
+        self._folder_field(
+            body,
+            "Ordenes de compra",
+            "Las OC se guardan aca, separadas de las facturas, por empresa y proveedor.",
+            self._orders_var,
+            row=2,
+        )
 
     def _build_config_actions(self) -> None:
         bar = ctk.CTkFrame(self._config_view, fg_color="transparent")
@@ -746,6 +776,7 @@ class MainWindow(ctk.CTkFrame):
         self._output_var.set(str(config.base_output_folder))
         self._unknown_var.set(str(config.unknown_folder))
         self._quarantine_var.set(str(config.quarantine_folder))
+        self._orders_var.set(str(config.orders_folder))
         self._dry_run_var.set(config.dry_run)
         self._stability_var.set(config.wait_for_stability)
         self._notify_var.set(config.notify)
@@ -756,7 +787,7 @@ class MainWindow(ctk.CTkFrame):
         self._refresh_societies_list()
 
     def _collect_config(self) -> AppConfig | None:
-        paths = (self._input_var, self._output_var, self._unknown_var, self._quarantine_var)
+        paths = (self._input_var, self._output_var, self._unknown_var, self._quarantine_var, self._orders_var)
         if any(not var.get().strip() for var in paths):
             messagebox.showerror("Configuracion incompleta", "Todas las carpetas son obligatorias.")
             return None
@@ -782,6 +813,7 @@ class MainWindow(ctk.CTkFrame):
             base_output_folder=Path(self._output_var.get().strip()),
             unknown_folder=Path(self._unknown_var.get().strip()),
             quarantine_folder=Path(self._quarantine_var.get().strip()),
+            orders_folder=Path(self._orders_var.get().strip()),
             societies=tuple(self._societies),
             dry_run=self._dry_run_var.get(),
             wait_for_stability=self._stability_var.get(),
@@ -943,6 +975,7 @@ class MainWindow(ctk.CTkFrame):
 
     def _handle_event(self, event: EngineEvent) -> None:
         if event.type is EngineEventType.STARTED:
+            self._reset_session_stats()
             self._set_running(True)
             self._detail_var.set(event.message)
         elif event.type is EngineEventType.STOPPED:
@@ -967,12 +1000,18 @@ class MainWindow(ctk.CTkFrame):
     def _on_result(self, result: ProcessResult) -> None:
         if result.outcome is ProcessOutcome.SKIPPED_MISSING:
             return
-        self._increment(_count_key(result.outcome))
+        self._increment(_count_key(result))
         voucher = result.invoice.voucher.label if result.invoice else ""
         destination = str(result.destination) if result.destination else result.message
-        self._append_log(
-            result.source.name, voucher, _OUTCOME_LABELS[result.outcome], _OUTCOME_ROW_TAG[result.outcome], destination
-        )
+        counted = result.counted_outcome
+        self._append_log(result.source.name, voucher, _status_label(result), _OUTCOME_ROW_TAG[counted], destination)
+
+    def _reset_session_stats(self) -> None:
+        self._counts = dict.fromkeys(self._counts, 0)
+        for var in self._stat_values.values():
+            var.set("0")
+        self._log.delete(*self._log.get_children())
+        self._empty_state.grid(row=0, column=0, sticky="nsew")
 
     def _append_log(self, filename: str, voucher: str, status: str, tag: str, destination: str) -> None:
         self._empty_state.grid_remove()  # There is activity now: reveal the table.
@@ -1000,7 +1039,8 @@ def _run_async(target: Callable[[], object]) -> None:
     threading.Thread(target=target, daemon=True).start()
 
 
-def _count_key(outcome: ProcessOutcome) -> str:
+def _count_key(result: ProcessResult) -> str:
+    outcome = result.counted_outcome
     if outcome in (ProcessOutcome.MOVED, ProcessOutcome.DRY_RUN):
         return "archived"
     if outcome in (
@@ -1011,6 +1051,12 @@ def _count_key(outcome: ProcessOutcome) -> str:
     ):
         return "review"
     return "error"
+
+
+def _status_label(result: ProcessResult) -> str:
+    if result.outcome is ProcessOutcome.DRY_RUN and result.intended is not None:
+        return f"Simulado · {_OUTCOME_LABELS[result.intended]}"
+    return _OUTCOME_LABELS[result.outcome]
 
 
 def _format_validation_error(exc: ValidationError) -> str:

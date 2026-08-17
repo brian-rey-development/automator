@@ -14,10 +14,10 @@ import customtkinter as ctk
 import pytest
 
 from automator.config import AppConfig, ConfigStore, SocietyMapping
-from automator.domain.models import ProcessOutcome
+from automator.domain.models import ProcessOutcome, ProcessResult
 from automator.services.ledger import LedgerRecord
 from automator.ui import main_window
-from automator.ui.main_window import MainWindow, _count_pdfs, _history_row
+from automator.ui.main_window import MainWindow, _count_key, _count_pdfs, _history_row, _status_label
 
 
 def _config(tmp_path: Path) -> AppConfig:
@@ -117,6 +117,44 @@ def test_history_row_formats_record() -> None:
     row = _history_row(record)
     assert row[1] == "factura.pdf"
     assert row[3] == "Archivado"
+
+
+def test_restore_history_clears_ledger_without_touching_files(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert window._ledger is not None
+    pdf = tmp_path / "archivada.pdf"
+    pdf.write_bytes(b"%PDF")
+    window._ledger.record(
+        ProcessResult(
+            source=Path("descarga.pdf"),
+            outcome=ProcessOutcome.MOVED,
+            destination=pdf,
+            invoice=None,
+            message="ok",
+        )
+    )
+    window._refresh_history()
+    assert window._history_tree.get_children()
+    monkeypatch.setattr(main_window.messagebox, "askyesno", lambda *args, **kwargs: True)
+    monkeypatch.setattr(main_window.messagebox, "showinfo", lambda *args, **kwargs: None)
+    window._restore_history()
+    assert window._ledger.recent() == []
+    assert not window._history_tree.get_children()
+    assert pdf.exists()
+
+
+def test_dry_run_review_counts_as_review_not_archived() -> None:
+    result = ProcessResult(
+        source=Path("x.pdf"),
+        outcome=ProcessOutcome.DRY_RUN,
+        destination=Path("/out/_PARA_REVISAR/x.pdf"),
+        invoice=None,
+        message="sim",
+        intended=ProcessOutcome.NEEDS_REVIEW,
+    )
+    assert _count_key(result) == "review"
+    assert _status_label(result) == "Simulado · Revisar"
 
 
 def test_count_pdfs_is_case_insensitive_and_recursive(tmp_path: Path) -> None:

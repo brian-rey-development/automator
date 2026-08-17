@@ -55,6 +55,29 @@ Cod. 01
 Punto de Venta: 0009   Comp. Nro: 00000001
 """
 
+# Purchase order (Orden de Compra): different labels and numbering than a factura.
+# Buyer CUIT matches CUIT_ONE (COMPRADORA UNO SA); supplier via "Proveedor:".
+ORDEN_COMPRA_TEXT = """GRUPO ANDREOLI
+RUTA 30 - KM 88.5
+ORD COMPRA  NRO: 2026-00004046
+Fecha: 15/08/2026
+Unidad Ejecutora: AUTOMOTRIZ
+Sociedad: COMPRADORA UNO SA
+Responsable Inscripto CUIT: 30111111118
+Proveedor: RICARDO BARTOLI Y CIA S.R.L
+Cond. Iva: Responsable No Inscripto CUIT: 30-70773021-4
+Total: 774,534.00
+"""
+
+# Same OC but the buyer CUIT is absent; only the near-matching society name is
+# present, to exercise the fuzzy fallback.
+ORDEN_COMPRA_NO_CUIT_TEXT = """GRUPO ANDREOLI
+ORD COMPRA  NRO: 2026-00004050
+Sociedad: COMPRADORA UNO S.A.
+Proveedor: RICARDO BARTOLI Y CIA S.R.L
+Total: 100,000.00
+"""
+
 
 @pytest.fixture
 def make_config(tmp_path: Path) -> Callable[..., AppConfig]:
@@ -67,6 +90,7 @@ def make_config(tmp_path: Path) -> Callable[..., AppConfig]:
             base_output_folder=base,
             unknown_folder=base / "_SIN_CLASIFICAR",
             quarantine_folder=base / "_ERRORES",
+            orders_folder=tmp_path / "ordenes",
             societies=[
                 SocietyMapping(cuit=CUIT_ONE, name="COMPRADORA UNO SA", folder=base / "UNO" / "PROV"),
             ],

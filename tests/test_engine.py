@@ -80,6 +80,25 @@ def test_failed_start_emits_error_and_leaves_no_running_engine(
     assert all(event.type is not EngineEventType.STARTED for event in events)
 
 
+def test_dry_run_does_not_reprocess_seen_source(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path], tmp_path: Path
+) -> None:
+    ledger = Ledger(tmp_path / "history.db")
+    config = make_config(dry_run=True)
+    source = dummy_pdf("factura.pdf")
+    events: list[EngineEvent] = []
+    engine = ProcessingEngine(lambda: config, events.append, extractor=lambda _path: FACTURA_A_TEXT, ledger=ledger)
+
+    result = engine.process_now(source)
+    assert result.outcome is ProcessOutcome.DRY_RUN
+    assert source.exists()
+
+    events.clear()
+    engine.process_existing()
+    assert not any(event.type is EngineEventType.DETECTED for event in events)
+    ledger.close()
+
+
 def test_copy_mode_does_not_reprocess_seen_source(
     make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path], tmp_path: Path
 ) -> None:

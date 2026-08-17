@@ -8,7 +8,13 @@ from pathlib import Path
 from automator.config import AppConfig, SocietyMapping
 from automator.domain.models import ProcessOutcome
 from automator.services.processor import InvoiceProcessor
-from tests.conftest import CUIT_ONE, CUIT_TWO, FACTURA_A_TEXT
+from tests.conftest import (
+    CUIT_ONE,
+    CUIT_TWO,
+    FACTURA_A_TEXT,
+    ORDEN_COMPRA_NO_CUIT_TEXT,
+    ORDEN_COMPRA_TEXT,
+)
 
 
 def _processor(config: AppConfig, text: str) -> InvoiceProcessor:
@@ -50,6 +56,21 @@ def test_dry_run_does_not_move_file(make_config: Callable[..., AppConfig], dummy
     source = dummy_pdf("simulacion.pdf")
     result = _processor(config, FACTURA_A_TEXT).process(source)
     assert result.outcome is ProcessOutcome.DRY_RUN
+    assert result.intended is ProcessOutcome.MOVED
+    assert source.exists()
+
+
+def test_dry_run_keeps_review_as_intended_outcome(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config(dry_run=True)
+    source = dummy_pdf("sin_numero.pdf")
+    text = "FACTURA\nCod. 01\nRazon Social: PROVEEDOR SIN NUMERO S.A.\n"
+    result = _processor(config, text).process(source)
+    assert result.outcome is ProcessOutcome.DRY_RUN
+    assert result.intended is ProcessOutcome.NEEDS_REVIEW
+    assert result.destination is not None
+    assert config.review_folder in result.destination.parents
     assert source.exists()
 
 
@@ -160,3 +181,44 @@ def test_supplier_equal_to_society_goes_to_review(
     text = "FACTURA\nCod. 01\nRazon Social: COMPRADORA UNO SA\nComp. Nro: 0001-00000009\n"
     result = _processor(config, text).process(source)
     assert result.outcome is ProcessOutcome.NEEDS_REVIEW
+
+
+def test_purchase_order_files_into_orders_area(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config()
+    source = dummy_pdf("orden.pdf")
+    result = _processor(config, ORDEN_COMPRA_TEXT).process(source)
+
+    expected = config.orders_folder / "COMPRADORA UNO SA" / "RICARDO BARTOLI Y CIA S.R.L"
+    expected_file = expected / "RICARDO BARTOLI Y CIA S.R.L OC 2026-00004046.pdf"
+    assert result.outcome is ProcessOutcome.MOVED
+    assert result.destination == expected_file
+    assert expected_file.exists()
+
+
+def test_purchase_order_fuzzy_matches_society_by_name(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    # No buyer CUIT in the text; the near-identical society name resolves it.
+    config = make_config()
+    source = dummy_pdf("orden_fuzzy.pdf")
+    result = _processor(config, ORDEN_COMPRA_NO_CUIT_TEXT).process(source)
+
+    assert result.outcome is ProcessOutcome.MOVED
+    assert result.destination is not None
+    assert config.orders_folder / "COMPRADORA UNO SA" in result.destination.parents
+    assert "nombre" in result.message
+
+
+def test_purchase_order_without_society_goes_to_sin_sociedad(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config()
+    source = dummy_pdf("orden_sin.pdf")
+    text = "ORD COMPRA  NRO: 2026-00009999\nProveedor: FERRETERIA LEJANA SA\nSociedad: EMPRESA NO CONFIGURADA XYZ\n"
+    result = _processor(config, text).process(source)
+
+    assert result.outcome is ProcessOutcome.UNCLASSIFIED
+    assert result.destination is not None
+    assert config.orders_folder / "_SIN_SOCIEDAD" in result.destination.parents

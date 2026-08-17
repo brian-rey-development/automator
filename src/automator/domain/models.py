@@ -9,6 +9,15 @@ from pathlib import Path
 
 # Sentinel used when the supplier's legal name could not be detected.
 UNKNOWN_SUPPLIER = "PROVEEDOR_DESCONOCIDO"
+_ORDER_LABEL = "OC"  # Short tag used in the file name for a purchase order.
+
+
+class DocumentType(StrEnum):
+    """Kind of document being filed. AFIP invoices and purchase orders differ in
+    their labels, numbering and destination, so the parser branches on this."""
+
+    FACTURA = "factura"
+    ORDEN_COMPRA = "orden_compra"
 
 
 class VoucherKind(StrEnum):
@@ -42,6 +51,16 @@ class ParsedInvoice:
     buyer_cuit: str | None  # CUIT of the detected buying company
     ambiguous_buyer: bool = False  # Several own companies appear: it cannot be decided
     issue_date: date | None = None  # Issue date, if it could be read
+    document_type: DocumentType = DocumentType.FACTURA
+    buyer_name: str | None = None  # Buyer's name as printed (used for fuzzy society matching)
+
+    @property
+    def type_label(self) -> str:
+        """Short tag for the file name and identity: the voucher label for
+        invoices ("FC A"), or "OC" for purchase orders."""
+        if self.document_type is DocumentType.ORDEN_COMPRA:
+            return _ORDER_LABEL
+        return self.voucher.label
 
     @property
     def full_number(self) -> str:
@@ -62,7 +81,7 @@ class ParsedInvoice:
         """Stable invoice key to detect duplicates; None if not reliable."""
         if not self.has_number or not self.has_supplier:
             return None
-        return f"{self.supplier.casefold()}|{self.full_number}|{self.voucher.label}"
+        return f"{self.supplier.casefold()}|{self.full_number}|{self.type_label}"
 
 
 class ProcessOutcome(StrEnum):
@@ -87,7 +106,12 @@ class ProcessResult:
     destination: Path | None
     invoice: ParsedInvoice | None
     message: str
+    intended: ProcessOutcome | None = None
 
     @property
     def is_success(self) -> bool:
         return self.outcome in (ProcessOutcome.MOVED, ProcessOutcome.DRY_RUN)
+
+    @property
+    def counted_outcome(self) -> ProcessOutcome:
+        return self.outcome if self.intended is None else self.intended

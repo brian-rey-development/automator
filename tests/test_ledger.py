@@ -71,6 +71,21 @@ def test_last_undoable_and_mark_reverted(tmp_path: Path) -> None:
     ledger.close()
 
 
+def test_clear_wipes_records_and_source_signatures(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "h.db")
+    invoice = _invoice()
+    assert invoice.identity is not None
+    ledger.record(_result(ProcessOutcome.MOVED, tmp_path / "a.pdf", invoice))
+    signature = "/descargas/f.pdf|1024|1700000000"
+    ledger.mark_source_seen(signature)
+    ledger.clear()
+    assert ledger.recent() == []
+    assert not ledger.identity_exists(invoice.identity)
+    assert not ledger.source_seen(signature)
+    assert ledger.last_undoable() is None
+    ledger.close()
+
+
 def test_ledger_persists_across_reopen(tmp_path: Path) -> None:
     path = tmp_path / "h.db"
     first = Ledger(path)

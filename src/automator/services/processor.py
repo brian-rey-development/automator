@@ -7,9 +7,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 from automator.config import AppConfig
+from automator.domain.buyer import BuyerResolution, resolve_buyer
 from automator.domain.classifier import destination_dir
 from automator.domain.filenames import build_filename
-from automator.domain.models import ParsedInvoice, ProcessOutcome, ProcessResult
+from automator.domain.models import DocumentType, ParsedInvoice, ProcessOutcome, ProcessResult
 from automator.domain.parser import parse_invoice
 from automator.services import file_ops
 from automator.services.pdf_reader import extract_text
@@ -56,7 +57,8 @@ class InvoiceProcessor:
         if not text.strip():
             return self._quarantine(source, config, "El PDF no contiene texto legible (posible escaneo).")
         invoice = parse_invoice(text, config.known_cuits())
-        if invoice.ambiguous_buyer:
+        buyer = resolve_buyer(invoice, list(config.societies))
+        if buyer.ambiguous:
             return self._archive(
                 source,
                 config,
@@ -81,27 +83,10 @@ class InvoiceProcessor:
                 invoice,
                 config.duplicates_folder,
                 ProcessOutcome.DUPLICATE,
-                "Duplicado: ya se habia archivado esta factura antes.",
+                "Duplicado: ya se habia archivado este documento antes.",
             )
-        if invoice.buyer_cuit is None:
-            # It is archived anyway (not lost), but with a distinct status so the
-            # user sees that the buyer society could not be identified.
-            return self._archive(
-                source,
-                config,
-                invoice,
-                config.unknown_folder,
-                ProcessOutcome.UNCLASSIFIED,
-                "Archivado sin clasificar: no se detecto la sociedad compradora.",
-            )
-        return self._archive(
-            source,
-            config,
-            invoice,
-            config.folder_for_cuit(invoice.buyer_cuit),
-            ProcessOutcome.MOVED,
-            "Archivado correctamente.",
-        )
+        outcome, message = _outcome_for(invoice, buyer)
+        return self._archive(source, config, invoice, _destination_base(invoice, buyer, config), outcome, message)
 
     def _archive(
         self,
@@ -116,7 +101,12 @@ class InvoiceProcessor:
         filename = build_filename(invoice)
         if config.dry_run:
             return _result(
-                source, ProcessOutcome.DRY_RUN, target_dir / filename, invoice, "Simulacion: no se movio el archivo."
+                source,
+                ProcessOutcome.DRY_RUN,
+                target_dir / filename,
+                invoice,
+                "Simulacion: no se movio el archivo.",
+                intended=outcome,
             )
         try:
             destination = _place(source, target_dir, filename, config)
@@ -135,6 +125,23 @@ class InvoiceProcessor:
             logger.exception("No se pudo poner en cuarentena %s; queda en la carpeta de entrada para reintento", source)
             return _result(source, ProcessOutcome.ERROR, None, None, message)
         return _result(source, ProcessOutcome.QUARANTINED, destination, None, message)
+
+
+def _destination_base(invoice: ParsedInvoice, buyer: BuyerResolution, config: AppConfig) -> Path:
+    # Purchase orders live in their own area; invoices go under the buyer's folder.
+    if invoice.document_type is DocumentType.ORDEN_COMPRA:
+        return config.orders_base_for(buyer.cuit)
+    return config.folder_for_cuit(buyer.cuit)
+
+
+def _outcome_for(invoice: ParsedInvoice, buyer: BuyerResolution) -> tuple[ProcessOutcome, str]:
+    if buyer.cuit is None:
+        # Still archived (never lost), but flagged: the buying company is unknown.
+        return ProcessOutcome.UNCLASSIFIED, "Archivado sin clasificar: no se detecto la sociedad compradora."
+    if buyer.fuzzy:
+        # Matched by name similarity, not by CUIT: recorded distinctly so it is auditable.
+        return ProcessOutcome.MOVED, f"Archivado (sociedad emparejada por nombre, {round(buyer.score * 100)}%)."
+    return ProcessOutcome.MOVED, "Archivado correctamente."
 
 
 def _is_reliable(invoice: ParsedInvoice, config: AppConfig) -> bool:
@@ -162,5 +169,13 @@ def _result(
     destination: Path | None,
     invoice: ParsedInvoice | None,
     message: str,
+    intended: ProcessOutcome | None = None,
 ) -> ProcessResult:
-    return ProcessResult(source=source, outcome=outcome, destination=destination, invoice=invoice, message=message)
+    return ProcessResult(
+        source=source,
+        outcome=outcome,
+        destination=destination,
+        invoice=invoice,
+        message=message,
+        intended=intended,
+    )

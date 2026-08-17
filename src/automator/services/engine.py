@@ -108,6 +108,7 @@ class ProcessingEngine:
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
         self._inflight: set[Path] = set()  # Avoids enqueuing the same file twice.
+        self._seen_signatures: set[str] = set()
         self._input_unreadable = False  # Avoids repeating the unreadable-folder warning on each rescan.
 
     @property
@@ -137,6 +138,7 @@ class ProcessingEngine:
         self._queue = queue.Queue()
         self._stop_event = threading.Event()
         self._inflight = set()
+        self._seen_signatures = set()
         self._input_unreadable = False
         self._watcher = FolderWatcher(config.input_folder, self._enqueue)
         self._watcher.start()
@@ -228,7 +230,7 @@ class ProcessingEngine:
         """Processes a file synchronously (useful for tests and CLI)."""
         result = self._processor.process(path)
         self._record(result)
-        self._mark_if_copied(path, result.outcome)
+        self._remember_source(path, result.outcome)
         self._emit(EngineEvent(EngineEventType.RESULT, result.message, path, result))
         return result
 
@@ -259,15 +261,24 @@ class ProcessingEngine:
             self._queue.put(path)
 
     def _already_processed(self, path: Path) -> bool:
-        # Only applies to copy mode: the original stays in the input, so it remembers
-        # which one was already processed to avoid copying it again on each rescan.
+        signature = _source_signature(path)
+        if signature is not None and signature in self._seen_signatures:
+            return True
         if self._ledger is None or not self._config_provider().copy_files:
             return False
-        signature = _source_signature(path)
         return signature is not None and self._ledger.source_seen(signature)
 
-    def _mark_if_copied(self, path: Path, outcome: ProcessOutcome) -> None:
-        if self._ledger is None or outcome not in _COPY_PLACED or not self._config_provider().copy_files:
+    def _remember_source(self, path: Path, outcome: ProcessOutcome) -> None:
+        if outcome is ProcessOutcome.SKIPPED_MISSING:
+            return
+        config = self._config_provider()
+        signature = _source_signature(path)
+        if signature is not None and (config.dry_run or config.copy_files):
+            self._seen_signatures.add(signature)
+        self._mark_copied_in_ledger(path, outcome, config.copy_files)
+
+    def _mark_copied_in_ledger(self, path: Path, outcome: ProcessOutcome, copy_files: bool) -> None:
+        if self._ledger is None or not copy_files or outcome not in _COPY_PLACED:
             return
         signature = _source_signature(path)
         if signature is None:
@@ -295,7 +306,7 @@ class ProcessingEngine:
         try:
             result = self._processor.process(path)
             self._record(result)
-            self._mark_if_copied(path, result.outcome)
+            self._remember_source(path, result.outcome)
             self._emit(EngineEvent(EngineEventType.RESULT, result.message, path, result))
         except Exception as exc:
             logger.exception("Error inesperado procesando %s", path)

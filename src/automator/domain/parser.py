@@ -11,7 +11,7 @@ import re
 from collections.abc import Iterable
 from datetime import date
 
-from automator.domain.models import UNKNOWN_SUPPLIER, ParsedInvoice, Voucher, VoucherKind
+from automator.domain.models import UNKNOWN_SUPPLIER, DocumentType, ParsedInvoice, Voucher, VoucherKind
 
 _DEFAULT_LETTER = "A"
 _DEFAULT_SALES_POINT = "0000"
@@ -63,6 +63,16 @@ _NUMBER_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"Comp\.?\s*N[roº°]*\.?\s*:?\s*(\d{4,5})\s*[-–]?\s*(\d{1,8})", re.IGNORECASE),  # noqa: RUF001
 )
 
+# Purchase order (Orden de Compra). "ORD COMPRA", "ORDEN COMPRA", "ORDEN DE COMPRA".
+_ORDER_PATTERN = re.compile(r"\bORD(?:EN)?\.?\s+(?:DE\s+)?COMPRA\b", re.IGNORECASE)
+# The OC number is printed as year-sequence, e.g. "ORD COMPRA NRO: 2026-00004046".
+_ORDER_NUMBER_PATTERN = re.compile(
+    r"ORD(?:EN)?\.?\s+(?:DE\s+)?COMPRA\s+N[roº°]*\.?\s*:?\s*(\d{4})\s*-\s*(\d+)",
+    re.IGNORECASE,
+)
+_PROVEEDOR_PATTERN = re.compile(r"Proveedor\s*:?\s*(.+)", re.IGNORECASE)
+_SOCIEDAD_PATTERN = re.compile(r"Sociedad\s*:?\s*(.+)", re.IGNORECASE)
+
 _SUPPLIER_PATTERN = re.compile(r"Raz[oó]n\s+Social\s*:?\s*(.+)", re.IGNORECASE)
 _CUIT_SEPARATORS = re.compile(r"[\s.\-]")
 # A CUIT is 11 digits (2 + 8 + 1) with at most one optional separator between blocks.
@@ -73,7 +83,13 @@ _DATE_PATTERN = re.compile(r"Fecha\s+de\s+Emisi[oó]n\s*:?\s*(\d{2})/(\d{2})/(\d
 
 
 def parse_invoice(text: str, known_cuits: Iterable[str] = ()) -> ParsedInvoice:
-    """Extract the relevant data of an invoice from its text."""
+    """Extract the relevant data of a document (invoice or purchase order)."""
+    if _ORDER_PATTERN.search(text):
+        return _parse_order(text, known_cuits)
+    return _parse_factura(text, known_cuits)
+
+
+def _parse_factura(text: str, known_cuits: Iterable[str]) -> ParsedInvoice:
     sales_point, number = _detect_number(text)
     buyer_cuit, ambiguous = _detect_cuit(text, known_cuits)
     return ParsedInvoice(
@@ -85,6 +101,44 @@ def parse_invoice(text: str, known_cuits: Iterable[str] = ()) -> ParsedInvoice:
         ambiguous_buyer=ambiguous,
         issue_date=_detect_date(text),
     )
+
+
+def _parse_order(text: str, known_cuits: Iterable[str]) -> ParsedInvoice:
+    sales_point, number = _detect_order_number(text)
+    buyer_cuit, ambiguous = _detect_cuit(text, known_cuits)
+    return ParsedInvoice(
+        # A purchase order has no fiscal voucher; type_label reports "OC" regardless.
+        voucher=Voucher(VoucherKind.INVOICE, _DEFAULT_LETTER),
+        sales_point=sales_point,
+        number=number,
+        supplier=_detect_order_supplier(text),
+        buyer_cuit=buyer_cuit,
+        ambiguous_buyer=ambiguous,
+        issue_date=_detect_date(text),
+        document_type=DocumentType.ORDEN_COMPRA,
+        buyer_name=_detect_buyer_name(text),
+    )
+
+
+def _detect_order_number(text: str) -> tuple[str, str]:
+    match = _ORDER_NUMBER_PATTERN.search(text)
+    if match:
+        return match.group(1).zfill(4), match.group(2).zfill(8)
+    return _DEFAULT_SALES_POINT, _DEFAULT_NUMBER
+
+
+def _detect_order_supplier(text: str) -> str:
+    # A purchase order labels the supplier as "Proveedor:" (not "Razon Social:").
+    match = _PROVEEDOR_PATTERN.search(text)
+    if match and match.group(1).strip():
+        return match.group(1).strip()
+    return UNKNOWN_SUPPLIER
+
+
+def _detect_buyer_name(text: str) -> str | None:
+    # The buying company is printed as "Sociedad:"; kept for fuzzy society matching.
+    match = _SOCIEDAD_PATTERN.search(text)
+    return match.group(1).strip() if match and match.group(1).strip() else None
 
 
 def _detect_date(text: str) -> date | None:
