@@ -6,6 +6,7 @@ import datetime as dt
 import logging
 import os
 import re
+import sys
 import threading
 from pathlib import Path
 
@@ -232,12 +233,36 @@ def load_config(path: Path | None = None) -> AppConfig:
 
 
 def save_config(config: AppConfig, path: Path | None = None) -> None:
-    """Save the configuration atomically (write to a temp file and replace)."""
+    """Save the configuration atomically and durably.
+
+    The temp file is flushed and fsynced before the rename so a power loss right
+    after cannot expose an empty or half-written config; os.replace is the atomic
+    swap and the parent directory is synced so the rename itself survives a crash.
+    """
     target = path or config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f"{target.name}.tmp")
-    tmp.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    with tmp.open("w", encoding="utf-8") as handle:
+        handle.write(config.model_dump_json(indent=2))
+        handle.flush()
+        os.fsync(handle.fileno())
     os.replace(tmp, target)  # Atomic rename: never leaves the file half-written.
+    _fsync_dir(target.parent)
+
+
+def _fsync_dir(directory: Path) -> None:
+    # Persisting the rename needs a directory fsync, which Windows does not support
+    # via a directory handle; there os.replace durability is left to the filesystem.
+    if sys.platform.startswith("win"):
+        return
+    try:
+        fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _backup_corrupt_config(target: Path) -> None:

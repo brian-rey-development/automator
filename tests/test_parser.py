@@ -76,6 +76,24 @@ def test_two_known_cuits_are_marked_ambiguous() -> None:
     assert invoice.ambiguous_buyer
 
 
+def test_known_cuit_not_matched_inside_longer_number() -> None:
+    # The 11 digits of a known CUIT appear as a substring of a longer number (a CAE and
+    # a concatenated run). A digit-bounded match must NOT treat it as the buyer, otherwise
+    # the invoice would be misfiled into that company's folder.
+    buried = f"9{CUIT_ONE}9"  # 13-digit run containing CUIT_ONE
+    text = f"FACTURA\nCod. 01\nCAE: {buried}\nComp. Nro: 0001-00000001\n"
+    invoice = parse_invoice(text, [CUIT_ONE])
+    assert invoice.buyer_cuit is None
+    assert not invoice.ambiguous_buyer
+
+
+def test_known_cuit_matched_with_separators_and_boundaries() -> None:
+    # A properly delimited CUIT (with dashes) is still detected as the buyer.
+    dashed = f"{CUIT_ONE[:2]}-{CUIT_ONE[2:10]}-{CUIT_ONE[10]}"
+    invoice = parse_invoice(f"FACTURA\nCod. 01\nCUIT: {dashed}\n", [CUIT_ONE])
+    assert invoice.buyer_cuit == CUIT_ONE
+
+
 def test_detects_issue_date() -> None:
     from datetime import date
 

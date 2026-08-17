@@ -65,6 +65,10 @@ _NUMBER_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 _SUPPLIER_PATTERN = re.compile(r"Raz[oó]n\s+Social\s*:?\s*(.+)", re.IGNORECASE)
 _CUIT_SEPARATORS = re.compile(r"[\s.\-]")
+# A CUIT is 11 digits (2 + 8 + 1) with at most one optional separator between blocks.
+# The digit boundaries (?<!\d)/(?!\d) stop it from matching inside a longer run (a CAE,
+# two concatenated numbers), which would otherwise cause a false buyer match and misfiling.
+_CUIT_CANDIDATE = re.compile(r"(?<!\d)\d{2}[\s.\-]?\d{8}[\s.\-]?\d(?!\d)")
 _DATE_PATTERN = re.compile(r"Fecha\s+de\s+Emisi[oó]n\s*:?\s*(\d{2})/(\d{2})/(\d{4})", re.IGNORECASE)
 
 
@@ -149,9 +153,11 @@ def _detect_cuit(text: str, known_cuits: Iterable[str]) -> tuple[str | None, boo
     the same group) the buyer cannot be reliably distinguished from the issuer:
     it is marked ambiguous to send to review instead of guessing and archiving wrong.
     """
-    # The text is normalized by removing separators to tolerate CUITs with dashes or dots.
-    normalized = _CUIT_SEPARATORS.sub("", text)
-    present = [cuit for cuit in known_cuits if cuit and cuit in normalized]
+    # Only real CUIT-shaped tokens (digit-bounded) count, then separators are dropped to
+    # compare. Matching against the whole separator-stripped text would let an 11-digit CUIT
+    # hit as a substring of a longer number and misfile the invoice.
+    found = {_CUIT_SEPARATORS.sub("", token) for token in _CUIT_CANDIDATE.findall(text)}
+    present = [cuit for cuit in known_cuits if cuit and cuit in found]
     if not present:
         return None, False
     if len(present) > 1:
