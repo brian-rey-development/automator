@@ -913,8 +913,11 @@ class MainWindow(ctk.CTkFrame):
         self._last_pending = count
 
     def _count_pending(self) -> int:
+        # Only what the user still has to act on and what "Reintentar" reprocesses:
+        # review and quarantine. Unclassified files are already archived, and that
+        # folder grows without bound, so walking it every few seconds is wasteful.
         config = self._store.get()
-        folders = (config.review_folder, config.quarantine_folder, config.unknown_folder)
+        folders = (config.review_folder, config.quarantine_folder)
         return sum(_count_pdfs(folder) for folder in folders)
 
     # --- Engine event loop --------------------------------------------------
@@ -1011,7 +1014,9 @@ def _count_key(outcome: ProcessOutcome) -> str:
 
 
 def _format_validation_error(exc: ValidationError) -> str:
-    return "\n".join(str(error["msg"]) for error in exc.errors())
+    # Pydantic prefixes messages from our ValueError validators with "Value error, ";
+    # drop it so the Spanish-only user does not see the English internal.
+    return "\n".join(str(error["msg"]).removeprefix("Value error, ") for error in exc.errors())
 
 
 def _format_cuit(cuit: str) -> str:

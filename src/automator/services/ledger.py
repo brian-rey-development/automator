@@ -69,6 +69,11 @@ class Ledger:
         self._conn.row_factory = sqlite3.Row
         self._lock = threading.Lock()
         with self._lock:
+            # WAL survives a crash mid-write far better than the default rollback
+            # journal, and NORMAL avoids an fsync on every append (safe under WAL:
+            # only the last transaction can be lost on an OS/power crash).
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
             self._conn.executescript(_SCHEMA)
             self._conn.commit()
 

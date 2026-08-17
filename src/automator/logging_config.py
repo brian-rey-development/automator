@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -36,9 +37,12 @@ def setup_logging(level: int = logging.INFO) -> None:
     )
     file_handler.setFormatter(formatter)
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-
     root.handlers.clear()
     root.addHandler(file_handler)
-    root.addHandler(stream_handler)
+
+    # The windowed .exe has no console, so sys.stderr is None; attaching a stream
+    # handler to it would make every log call raise. The file handler still logs.
+    if sys.stderr is not None:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        root.addHandler(stream_handler)

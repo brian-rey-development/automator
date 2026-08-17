@@ -91,6 +91,8 @@ class SocietyDialog(ctk.CTkToplevel):
 
     def _make_modal(self, master: tk.Misc) -> None:
         self.transient(master.winfo_toplevel())
+        self.bind("<Return>", lambda _event: self._save())
+        self.bind("<Escape>", lambda _event: self.destroy())
         # grab_set fails if the window is not yet visible: wait until it is.
         self.wait_visibility()
         self.grab_set()
@@ -100,4 +102,5 @@ class SocietyDialog(ctk.CTkToplevel):
 def _first_error(exc: ValidationError) -> str:
     error = exc.errors()[0]
     field = error["loc"][0] if error["loc"] else ""
-    return f"{field}: {error['msg']}"
+    message = str(error["msg"]).removeprefix("Value error, ")
+    return f"{field}: {message}"

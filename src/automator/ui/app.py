@@ -19,7 +19,7 @@ from automator.ui.theme import init_appearance
 logger = logging.getLogger(__name__)
 
 _WINDOW_TITLE = "Automator - Clasificador de facturas AFIP"
-_INITIAL_GEOMETRY = "1080x700"
+_INITIAL_SIZE = (1080, 700)
 _MIN_SIZE = (980, 640)
 
 
@@ -56,12 +56,21 @@ def _icon_path() -> Path | None:
     return candidate if candidate.exists() else None
 
 
+def _center(root: ctk.CTk, width: int, height: int) -> None:
+    # Places the window centered (a touch above the vertical middle, which reads
+    # better) instead of wherever the OS drops it.
+    root.update_idletasks()
+    x = max(0, (root.winfo_screenwidth() - width) // 2)
+    y = max(0, (root.winfo_screenheight() - height) // 3)
+    root.geometry(f"{width}x{height}+{x}+{y}")
+
+
 def _run() -> None:
     init_appearance()
     root = ctk.CTk()
     root.title(_WINDOW_TITLE)
-    root.geometry(_INITIAL_GEOMETRY)
     root.minsize(*_MIN_SIZE)
+    _center(root, *_INITIAL_SIZE)
     _apply_icon(root)
 
     first_run = not config_path().exists()
