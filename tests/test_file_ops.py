@@ -66,6 +66,18 @@ def test_move_file_does_not_overwrite(tmp_path: Path) -> None:
     assert destination == target_dir / "final (2).pdf"
 
 
+def test_move_file_onto_itself_is_a_no_op(tmp_path: Path) -> None:
+    # Reprocessing a review file lands it in the same folder with the same name:
+    # it must stay put, never be renamed to a " (2)" duplicate of itself.
+    source = tmp_path / "carpeta" / "factura.pdf"
+    source.parent.mkdir()
+    source.write_text("contenido")
+    destination = move_file(source, tmp_path / "carpeta", "factura.pdf")
+    assert destination == source
+    assert source.exists()
+    assert not (tmp_path / "carpeta" / "factura (2).pdf").exists()
+
+
 def test_copy_file_keeps_source_and_creates_copy(tmp_path: Path) -> None:
     source = tmp_path / "origen.pdf"
     source.write_text("contenido")

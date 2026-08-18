@@ -62,7 +62,10 @@ def move_file(source: Path, target_dir: Path, filename: str) -> Path:
     destination calculation and the move.
     """
     target_dir.mkdir(parents=True, exist_ok=True)
-    target = unique_destination(target_dir / filename)
+    desired = target_dir / filename
+    if desired.exists() and desired.samefile(source):
+        return source  # Already at its destination (a reprocessed file): never duplicate it.
+    target = unique_destination(desired)
     shutil.move(_os_path(source), _os_path(target))
     return target
 
