@@ -93,6 +93,18 @@ def test_suppliers_search_lists_matches(window: MainWindow) -> None:
     assert window._suppliers_list.winfo_children()
 
 
+def test_clear_suppliers_button_disabled_when_registry_is_empty(window: MainWindow) -> None:
+    assert window._supplier_store is not None
+    assert window._registry_store is not None
+    window._refresh_suppliers()
+    assert window._clear_suppliers_btn.cget("state") == "disabled"
+
+    window._supplier_store.bulk_upsert([Supplier(cuit="30999999995", razon_social="Nordica SA")])
+    window._registry_store.reload()
+    window._refresh_suppliers()
+    assert window._clear_suppliers_btn.cget("state") == "normal"
+
+
 def test_import_suppliers_updates_registry(window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert window._supplier_store is not None
     assert window._registry_store is not None

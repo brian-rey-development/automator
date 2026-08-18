@@ -156,6 +156,22 @@ def test_duplicate_only_when_the_original_still_exists(
     ledger.close()
 
 
+def test_reprocess_pending_finds_pdfs_nested_in_supplier_subfolders(
+    make_config: Callable[..., AppConfig],
+) -> None:
+    # Review files are filed under _PARA_REVISAR/{supplier}/, so retrying them must recurse.
+    config = make_config()
+    config.ensure_folders()
+    nested = config.review_folder / "PROVEEDOR X"
+    nested.mkdir(parents=True, exist_ok=True)
+    (nested / "factura.pdf").write_bytes(b"%PDF")
+    events: list[EngineEvent] = []
+
+    total = _engine(config, events.append, FACTURA_A_TEXT).reprocess_pending()
+
+    assert total == 1
+
+
 def test_sink_errors_do_not_crash_engine(
     make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
 ) -> None:

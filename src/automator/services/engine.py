@@ -51,13 +51,16 @@ def _source_signature(path: Path) -> str | None:
     return f"{os.path.abspath(path)}|{stat.st_size}|{int(stat.st_mtime)}"
 
 
-def _list_pdfs(folder: Path) -> list[Path]:
+def _list_pdfs(folder: Path, *, recursive: bool = False) -> list[Path]:
     """Lists the PDFs in a folder, case-insensitive on the extension.
 
-    Propagates OSError on purpose: if the input folder cannot be read, the engine
-    must notify the user, not stay silent processing an empty list.
+    Recurses when asked: review and quarantine files are filed under a per-supplier
+    subfolder, so retrying them requires descending into those subfolders.
+    Propagates OSError on purpose: if the folder cannot be read, the engine must
+    notify the user, not stay silent processing an empty list.
     """
-    return sorted(path for path in folder.iterdir() if path.is_file() and is_pdf(path))
+    paths = folder.rglob("*") if recursive else folder.iterdir()
+    return sorted(path for path in paths if path.is_file() and is_pdf(path))
 
 
 class EngineEventType(StrEnum):
@@ -205,7 +208,7 @@ class ProcessingEngine:
         total = 0
         for folder in (config.review_folder, config.quarantine_folder):
             try:
-                pdfs = _list_pdfs(folder)
+                pdfs = _list_pdfs(folder, recursive=True)
             except OSError:
                 logger.warning("No se pudo listar %s para reintentar", folder)
                 continue

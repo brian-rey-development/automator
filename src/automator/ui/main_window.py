@@ -461,7 +461,7 @@ class MainWindow(ctk.CTkFrame):
         self._undo_btn = self._secondary_button(bar, f"{_ICON_UNDO}  Deshacer ultimo movimiento", self._undo_last)
         self._undo_btn.pack(side="left")
         self._ghost_button(bar, f"{_ICON_REFRESH}  Actualizar", self._refresh_history).pack(side="right")
-        self._restore_btn = self._ghost_button(bar, "Restaurar historial", self._restore_history)
+        self._restore_btn = self._ghost_button(bar, "Vaciar historial", self._restore_history)
         self._restore_btn.pack(side="right", padx=(0, 10))
 
     def _update_history_actions(self) -> None:
@@ -538,17 +538,17 @@ class MainWindow(ctk.CTkFrame):
 
     def _restore_history(self) -> None:
         if self._ledger is None:
-            messagebox.showerror("Restaurar historial", "No se pudo abrir el historial.")
+            messagebox.showerror("Vaciar historial", "No se pudo abrir el historial.")
             return
         if self._engine.is_running:
-            messagebox.showinfo("Restaurar historial", "Deten el monitor antes de restaurar.")
+            messagebox.showinfo("Vaciar historial", "Deten el monitor antes de vaciar el historial.")
             return
-        if not messagebox.askyesno("Restaurar historial", _RESTORE_CONFIRM, icon="warning"):
+        if not messagebox.askyesno("Vaciar historial", _RESTORE_CONFIRM, icon="warning"):
             return
         self._ledger.clear()
         self._reset_session_stats()
         self._refresh_history()
-        messagebox.showinfo("Restaurar historial", "Historial vaciado. Los archivos siguen donde estaban.")
+        messagebox.showinfo("Vaciar historial", "Historial vaciado. Los archivos siguen donde estaban.")
 
     def _reprocess_pending(self) -> None:
         def run() -> None:
@@ -854,7 +854,8 @@ class MainWindow(ctk.CTkFrame):
             row=0, column=0, sticky="w"
         )
         self._path_button(header, "Importar Excel", self._import_suppliers).grid(row=0, column=1, padx=(6, 0))
-        self._path_button(header, "Vaciar", self._clear_suppliers).grid(row=0, column=2, padx=(6, 0))
+        self._clear_suppliers_btn = self._path_button(header, "Vaciar", self._clear_suppliers)
+        self._clear_suppliers_btn.grid(row=0, column=2, padx=(6, 0))
         search = ctk.CTkEntry(
             body, textvariable=self._supplier_search_var, height=38, placeholder_text="Buscar proveedor..."
         )
@@ -870,7 +871,9 @@ class MainWindow(ctk.CTkFrame):
             child.destroy()
         if self._registry_store is None or self._supplier_store is None:
             return
-        self._supplier_count_var.set(f"{self._supplier_store.count()} proveedores")
+        count = self._supplier_store.count()
+        self._supplier_count_var.set(f"{count} proveedores")
+        self._clear_suppliers_btn.configure(state="normal" if count > 0 else "disabled")
         query = self._supplier_search_var.get().strip()
         results = self._registry_store.get().search(query, limit=_MAX_SUPPLIER_RESULTS)
         for index, supplier in enumerate(results):
