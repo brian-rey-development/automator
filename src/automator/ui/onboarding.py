@@ -9,11 +9,8 @@ from tkinter import filedialog
 import customtkinter as ctk
 from pydantic import ValidationError
 
-from automator.config import AppConfig, SocietyMapping
+from automator.config import QUARANTINE_FOLDER_NAME, UNKNOWN_FOLDER_NAME, AppConfig, SocietyMapping
 from automator.ui.theme import CORNER_RADIUS, Palette
-
-_UNKNOWN_SUBFOLDER = "_FACTURAS_SIN_CLASIFICAR"
-_QUARANTINE_SUBFOLDER = "_ERRORES"
 
 
 class OnboardingDialog(ctk.CTkToplevel):
@@ -107,8 +104,8 @@ class OnboardingDialog(ctk.CTkToplevel):
         return AppConfig(
             input_folder=Path(self._input.get().strip()),
             base_output_folder=base,
-            unknown_folder=base / _UNKNOWN_SUBFOLDER,
-            quarantine_folder=base / _QUARANTINE_SUBFOLDER,
+            unknown_folder=base / UNKNOWN_FOLDER_NAME,
+            quarantine_folder=base / QUARANTINE_FOLDER_NAME,
             societies=self._collect_society(),
         )
 

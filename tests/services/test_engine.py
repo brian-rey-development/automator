@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -176,6 +177,41 @@ def test_reprocess_pending_finds_pdfs_nested_in_supplier_subfolders(
     assert result.outcome is ProcessOutcome.MOVED
     assert result.destination is not None
     assert result.destination.exists()
+
+
+def test_stop_joins_rescanner_before_restart(make_config: Callable[..., AppConfig]) -> None:
+    engine = _engine(make_config(), lambda _event: None, FACTURA_A_TEXT)
+    engine.start()
+    first = engine._rescanner
+    assert first is not None
+    engine.stop()
+    assert not first.is_alive()
+    engine.start()
+    second = engine._rescanner
+    assert second is not None
+    assert second is not first
+    engine.stop()
+    assert not engine.is_running
+
+
+def test_failed_launch_after_worker_start_does_not_orphan(
+    make_config: Callable[..., AppConfig], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[EngineEvent] = []
+    engine = _engine(make_config(), events.append, FACTURA_A_TEXT)
+    real_thread = threading.Thread
+    started = {"n": 0}
+
+    def counting_thread(*args: object, **kwargs: object) -> threading.Thread:
+        started["n"] += 1
+        if started["n"] == 2:
+            raise OSError("no rescan")
+        return real_thread(*args, **kwargs)
+
+    monkeypatch.setattr(engine_module.threading, "Thread", counting_thread)
+    engine.start()
+    assert not engine.is_running
+    assert any(event.type is EngineEventType.ERROR for event in events)
 
 
 def test_sink_errors_do_not_crash_engine(

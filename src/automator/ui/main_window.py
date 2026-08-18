@@ -52,7 +52,7 @@ _CUIT_LENGTH = 11
 _ICON_RETRY = "↻"  # circular arrow: retry
 _ICON_UNDO = "↶"  # return arrow: undo
 _ICON_REFRESH = "⟳"  # wide circular arrow: refresh
-_RESTORE_CONFIRM = (
+_CLEAR_HISTORY_CONFIRM = (
     "Se borra el historial de procesamiento: duplicados, revisiones y archivos ya vistos.\n\n"
     "Los PDF no se mueven ni se eliminan.\n\n"
     "Despues vas a poder reprocesar y revisar de nuevo. Continuar?"
@@ -461,8 +461,8 @@ class MainWindow(ctk.CTkFrame):
         self._undo_btn = self._secondary_button(bar, f"{_ICON_UNDO}  Deshacer ultimo movimiento", self._undo_last)
         self._undo_btn.pack(side="left")
         self._ghost_button(bar, f"{_ICON_REFRESH}  Actualizar", self._refresh_history).pack(side="right")
-        self._restore_btn = self._ghost_button(bar, "Vaciar historial", self._restore_history)
-        self._restore_btn.pack(side="right", padx=(0, 10))
+        self._clear_history_btn = self._ghost_button(bar, "Vaciar historial", self._clear_history)
+        self._clear_history_btn.pack(side="right", padx=(0, 10))
 
     def _update_history_actions(self) -> None:
         # Disables what cannot be used now: nothing to undo, or nothing pending.
@@ -470,7 +470,7 @@ class MainWindow(ctk.CTkFrame):
         has_history = self._ledger is not None and bool(self._ledger.recent(1))
         can_undo = not running and self._ledger is not None and self._ledger.last_undoable() is not None
         self._undo_btn.configure(state="normal" if can_undo else "disabled")
-        self._restore_btn.configure(state="normal" if (not running and has_history) else "disabled")
+        self._clear_history_btn.configure(state="normal" if (not running and has_history) else "disabled")
         self._retry_btn.configure(state="normal" if self._count_pending() > 0 else "disabled")
 
     def _build_history_table(self) -> None:
@@ -536,14 +536,14 @@ class MainWindow(ctk.CTkFrame):
         messagebox.showinfo("Deshacer", f"Se devolvio {source.name} a la carpeta de entrada.")
         self._refresh_history()
 
-    def _restore_history(self) -> None:
+    def _clear_history(self) -> None:
         if self._ledger is None:
             messagebox.showerror("Vaciar historial", "No se pudo abrir el historial.")
             return
         if self._engine.is_running:
             messagebox.showinfo("Vaciar historial", "Deten el monitor antes de vaciar el historial.")
             return
-        if not messagebox.askyesno("Vaciar historial", _RESTORE_CONFIRM, icon="warning"):
+        if not messagebox.askyesno("Vaciar historial", _CLEAR_HISTORY_CONFIRM, icon="warning"):
             return
         self._ledger.clear()
         self._reset_session_stats()

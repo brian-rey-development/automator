@@ -8,6 +8,8 @@ import pytest
 from pydantic import ValidationError
 
 from automator.config import (
+    QUARANTINE_FOLDER_NAME,
+    UNKNOWN_FOLDER_NAME,
     AppConfig,
     ConfigStore,
     SocietyMapping,
@@ -207,3 +209,9 @@ def test_load_store_writes_default_when_missing(tmp_path: Path) -> None:
     store = load_store(path)
     assert path.exists()
     assert store.get() == default_config()
+
+
+def test_default_unknown_and_quarantine_folder_names() -> None:
+    config = default_config()
+    assert config.unknown_folder.name == UNKNOWN_FOLDER_NAME
+    assert config.quarantine_folder.name == QUARANTINE_FOLDER_NAME

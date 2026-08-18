@@ -3,7 +3,14 @@
 All notable changes to this project. Format based on
 [Keep a Changelog](https://keepachangelog.com/); semantic versioning.
 
-## [Unreleased]
+## [1.0.1] - 2026-08-17
+
+### Fixed
+
+- Reprocessing a review file no longer creates a ` (n)` copy of itself.
+- Retry pending now finds PDFs nested under `_PARA_REVISAR/{supplier}/`.
+- History clear action is labeled "Vaciar historial".
+
 
 ### Added
 

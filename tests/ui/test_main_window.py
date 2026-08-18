@@ -181,7 +181,7 @@ def test_poll_events_applies_a_result(window: MainWindow) -> None:
     assert window._counts["archived"] == 1
 
 
-def test_restore_history_clears_ledger_without_touching_files(
+def test_clear_history_clears_ledger_without_touching_files(
     window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert window._ledger is not None
@@ -200,19 +200,19 @@ def test_restore_history_clears_ledger_without_touching_files(
     assert window._history_tree.get_children()
     monkeypatch.setattr(main_window.messagebox, "askyesno", lambda *args, **kwargs: True)
     monkeypatch.setattr(main_window.messagebox, "showinfo", lambda *args, **kwargs: None)
-    window._restore_history()
+    window._clear_history()
     assert window._ledger.recent() == []
     assert not window._history_tree.get_children()
     assert pdf.exists()
 
 
-def test_restore_history_resets_session_counters(window: MainWindow, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_clear_history_resets_session_counters(window: MainWindow, monkeypatch: pytest.MonkeyPatch) -> None:
     window._increment("detected")
     window._increment("archived")
     assert window._counts["detected"] == 1
     monkeypatch.setattr(main_window.messagebox, "askyesno", lambda *args, **kwargs: True)
     monkeypatch.setattr(main_window.messagebox, "showinfo", lambda *args, **kwargs: None)
 
-    window._restore_history()
+    window._clear_history()
 
     assert window._counts == {"detected": 0, "archived": 0, "review": 0, "error": 0}

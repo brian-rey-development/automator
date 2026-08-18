@@ -104,7 +104,7 @@ installer with a start-menu shortcut and an auto-start option:
 iscc installer\automator.iss
 ```
 
-It lands in `dist\installer\Automator-Setup-1.0.0.exe`.
+It lands in `dist\installer\Automator-Setup-1.0.1.exe`.
 
 ## Quality
 

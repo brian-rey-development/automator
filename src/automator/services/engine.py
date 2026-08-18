@@ -17,7 +17,7 @@ from pathlib import Path
 
 from automator.config import AppConfig
 from automator.domain.models import ParsedInvoice, ProcessOutcome, ProcessResult
-from automator.services.file_ops import is_pdf
+from automator.services.file_ops import is_pdf, path_exists
 from automator.services.ledger import Ledger
 from automator.services.pdf_reader import extract_text
 from automator.services.processor import InvoiceProcessor, RegistryProvider, TextExtractor, _empty_registry
@@ -119,12 +119,18 @@ class ProcessingEngine:
 
     @property
     def is_running(self) -> bool:
-        worker = self._worker  # Single read: the worker may become None in parallel.
-        return worker is not None and worker.is_alive()
+        return self._has_live_threads()
+
+    def _has_live_threads(self) -> bool:
+        worker = self._worker
+        rescanner = self._rescanner
+        if worker is not None and worker.is_alive():
+            return True
+        return rescanner is not None and rescanner.is_alive()
 
     def start(self) -> None:
         with self._lock:
-            if self.is_running:
+            if self._has_live_threads():
                 return
             config = self._config_provider()
             try:
@@ -135,7 +141,7 @@ class ProcessingEngine:
                 self._emit(EngineEvent(EngineEventType.ERROR, f"No se pudo iniciar el monitor: {exc}"))
                 return
         self._emit(EngineEvent(EngineEventType.STARTED, f"Monitoreando: {config.input_folder}"))
-        self.process_existing()  # Processes what was already in the folder, without the user doing anything.
+        self.process_existing()
 
     def _launch(self, config: AppConfig) -> None:
         # Fresh state per generation before starting the threads: own queue and
@@ -155,36 +161,48 @@ class ProcessingEngine:
 
     def _cleanup_failed_start(self) -> None:
         self._stop_event.set()
+        self._queue.put(_SENTINEL)
         if self._watcher is not None:
             try:
                 self._watcher.stop()
             except Exception:
                 logger.exception("Fallo al limpiar el watcher tras un arranque fallido")
+        self._join_threads()
         self._watcher = None
         self._worker = None
         self._rescanner = None
+
+    def _join_threads(self) -> bool:
+        worker = self._worker
+        rescanner = self._rescanner
+        if worker is not None:
+            worker.join(timeout=_WORKER_JOIN_TIMEOUT_S)
+        if rescanner is not None:
+            rescanner.join(timeout=_WORKER_JOIN_TIMEOUT_S)
+        worker_alive = worker is not None and worker.is_alive()
+        rescanner_alive = rescanner is not None and rescanner.is_alive()
+        return not worker_alive and not rescanner_alive
 
     def stop(self) -> None:
         with self._lock:
             worker = self._worker
             watcher = self._watcher
-            if worker is None:
+            if worker is None and self._rescanner is None:
                 return
             self._stop_event.set()
             work_queue = self._queue
         if watcher is not None:
             watcher.stop()
         work_queue.put(_SENTINEL)
-        worker.join(timeout=_WORKER_JOIN_TIMEOUT_S)
+        stopped_cleanly = self._join_threads()
+        if not stopped_cleanly:
+            logger.warning("El worker o el rescanner no termino dentro del timeout")
+            self._emit(EngineEvent(EngineEventType.ERROR, "El monitor no pudo detenerse a tiempo."))
+            return
         with self._lock:
-            if worker.is_alive():
-                # The references are kept so is_running stays True and a new start
-                # does not launch a second worker while this one does not die.
-                logger.warning("El worker no termino dentro del timeout; puede seguir vivo en segundo plano")
-            else:
-                self._watcher = None
-                self._worker = None
-                self._rescanner = None
+            self._watcher = None
+            self._worker = None
+            self._rescanner = None
         self._emit(EngineEvent(EngineEventType.STOPPED, "Monitor detenido."))
 
     def process_existing(self) -> int:
@@ -246,7 +264,7 @@ class ProcessingEngine:
         destination = self._ledger.archived_destination(invoice.identity)
         # A real duplicate only if the previously archived file is still there. If the
         # original was removed, this copy must be filed, never lost as a phantom duplicate.
-        return destination is not None and Path(destination).exists()
+        return destination is not None and path_exists(Path(destination))
 
     def _record(self, result: ProcessResult) -> None:
         # What no longer exists is not recorded (noise); everything else stays in the history.
@@ -271,8 +289,10 @@ class ProcessingEngine:
 
     def _already_processed(self, path: Path) -> bool:
         signature = _source_signature(path)
-        if signature is not None and signature in self._seen_signatures:
-            return True
+        if signature is not None:
+            with self._lock:
+                if signature in self._seen_signatures:
+                    return True
         if self._ledger is None or not self._config_provider().copy_files:
             return False
         return signature is not None and self._ledger.source_seen(signature)
@@ -283,7 +303,8 @@ class ProcessingEngine:
         config = self._config_provider()
         signature = _source_signature(path)
         if signature is not None and (config.dry_run or config.copy_files):
-            self._seen_signatures.add(signature)
+            with self._lock:
+                self._seen_signatures.add(signature)
         self._mark_copied_in_ledger(path, outcome, config.copy_files)
 
     def _mark_copied_in_ledger(self, path: Path, outcome: ProcessOutcome, copy_files: bool) -> None:
@@ -297,11 +318,15 @@ class ProcessingEngine:
         except Exception:
             logger.exception("No se pudo marcar %s como procesado", path)
 
+    def _path_key(self, path: Path) -> Path:
+        return Path(os.path.abspath(path))
+
     def _reserve(self, path: Path) -> bool:
+        key = self._path_key(path)
         with self._lock:
-            if path in self._inflight:
+            if key in self._inflight:
                 return False
-            self._inflight.add(path)
+            self._inflight.add(key)
         return True
 
     def _run(self) -> None:
@@ -322,7 +347,7 @@ class ProcessingEngine:
             self._emit(EngineEvent(EngineEventType.ERROR, str(exc), path))
         finally:
             with self._lock:
-                self._inflight.discard(path)
+                self._inflight.discard(self._path_key(path))
 
     def _emit(self, event: EngineEvent) -> None:
         try:

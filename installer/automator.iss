@@ -3,7 +3,7 @@
 ; Compilar con: iscc installer\automator.iss  (o abriendolo con Inno Setup Compiler).
 
 #define AppName "Automator"
-#define AppVersion "1.0.0"
+#define AppVersion "1.0.1"
 #define AppPublisher "Brian Rey"
 #define AppExe "Automator.exe"
 

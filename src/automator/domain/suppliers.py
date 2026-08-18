@@ -55,8 +55,14 @@ class SupplierRegistry:
 
     def __init__(self, suppliers: list[Supplier] | tuple[Supplier, ...]) -> None:
         self._suppliers = tuple(suppliers)
-        self._by_cuit = {supplier.cuit: supplier for supplier in self._suppliers}
-        self._by_name = {alias: supplier for supplier in self._suppliers for alias in supplier.aliases()}
+        by_cuit: dict[str, list[Supplier]] = {}
+        by_name: dict[str, list[Supplier]] = {}
+        for supplier in self._suppliers:
+            by_cuit.setdefault(supplier.cuit, []).append(supplier)
+            for alias in supplier.aliases():
+                by_name.setdefault(alias, []).append(supplier)
+        self._by_cuit = by_cuit
+        self._by_name = by_name
 
     def __len__(self) -> int:
         return len(self._suppliers)
@@ -77,12 +83,15 @@ class SupplierRegistry:
         return sorted(matches, key=lambda s: s.razon_social)[:limit]
 
     def _match_cuit(self, text: str, exclude_cuits: set[str]) -> Supplier | None:
-        candidates = {self._by_cuit[cuit] for cuit in extract_cuits(text) - exclude_cuits if cuit in self._by_cuit}
+        candidates: set[Supplier] = set()
+        for cuit in extract_cuits(text) - exclude_cuits:
+            candidates.update(self._by_cuit.get(cuit, ()))
         return next(iter(candidates)) if len(candidates) == 1 else None
 
     def _match_text(self, text: str) -> Supplier | None:
         haystack = normalize_name(text)
-        matches = {
-            supplier for alias, supplier in self._by_name.items() if len(alias) >= _MIN_TEXT_ALIAS and alias in haystack
-        }
+        matches: set[Supplier] = set()
+        for alias, suppliers in self._by_name.items():
+            if len(alias) >= _MIN_TEXT_ALIAS and alias in haystack:
+                matches.update(suppliers)
         return next(iter(matches)) if len(matches) == 1 else None

@@ -78,6 +78,29 @@ def test_move_file_onto_itself_is_a_no_op(tmp_path: Path) -> None:
     assert not (tmp_path / "carpeta" / "factura (2).pdf").exists()
 
 
+def test_copy_file_onto_itself_is_a_no_op(tmp_path: Path) -> None:
+    source = tmp_path / "carpeta" / "factura.pdf"
+    source.parent.mkdir()
+    source.write_text("contenido")
+    destination = copy_file(source, tmp_path / "carpeta", "factura.pdf")
+    assert destination == source
+    assert source.exists()
+    assert not (tmp_path / "carpeta" / "factura (2).pdf").exists()
+
+
+def test_already_at_returns_false_when_source_vanishes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "origen.pdf"
+    source.write_text("x")
+    desired = tmp_path / "destino.pdf"
+    desired.write_text("y")
+
+    def boom(_left: str, _right: str) -> bool:
+        raise FileNotFoundError("gone")
+
+    monkeypatch.setattr(file_ops.os.path, "samefile", boom)
+    assert file_ops._already_at(source, desired) is False
+
+
 def test_copy_file_keeps_source_and_creates_copy(tmp_path: Path) -> None:
     source = tmp_path / "origen.pdf"
     source.write_text("contenido")

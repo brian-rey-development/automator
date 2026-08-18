@@ -87,7 +87,7 @@ _SPLIT_SEQUENCE = re.compile(r"C[oó]d\.?\s*\d{1,3}\s+(\d{8})(?!\d)", re.IGNOREC
 _STANDALONE_NUMBER = re.compile(r"(?<![-\d])(\d{4,5})\s*[-–]\s*(\d{8})(?!-?\d)")  # noqa: RUF001
 
 # Purchase order (Orden de Compra). "ORD COMPRA", "ORDEN COMPRA", "ORDEN DE COMPRA".
-_ORDER_PATTERN = re.compile(r"\bORD(?:EN)?\.?\s+(?:DE\s+)?COMPRA\b", re.IGNORECASE)
+_ORDER_PATTERN = re.compile(r"(?m)^\s*\bORD(?:EN)?\.?\s+(?:DE\s+)?COMPRA\b", re.IGNORECASE)
 # The OC number is printed as year-sequence, e.g. "ORD COMPRA NRO: 2026-00004046".
 _ORDER_NUMBER_PATTERN = re.compile(
     r"ORD(?:EN)?\.?\s+(?:DE\s+)?COMPRA\s+N[roº°]*\.?\s*:?\s*(\d{4})\s*-\s*(\d+)",

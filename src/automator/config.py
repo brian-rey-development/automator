@@ -24,7 +24,11 @@ APP_AUTHOR = "Brian Rey"
 _MIN_STABILITY_TIMEOUT = 0.0
 _MAX_STABILITY_TIMEOUT = 120.0
 _TEMPLATE_TOKENS = {"supplier", "society", "year", "month", "day"}
-_ORDERS_NO_SOCIETY = "_SIN_SOCIEDAD"  # Subfolder for purchase orders with no identified buyer.
+UNKNOWN_FOLDER_NAME = "_SIN_CLASIFICAR"
+QUARANTINE_FOLDER_NAME = "_ERRORES"
+REVIEW_FOLDER_NAME = "_PARA_REVISAR"
+DUPLICATES_FOLDER_NAME = "_DUPLICADOS"
+_ORDERS_NO_SOCIETY = "_SIN_SOCIEDAD"
 
 
 def _is_within(child: Path, parent: Path) -> bool:
@@ -143,12 +147,12 @@ class AppConfig(BaseModel):
     @property
     def review_folder(self) -> Path:
         """Folder for invoices with incomplete data that require manual review."""
-        return self.base_output_folder / "_PARA_REVISAR"
+        return self.base_output_folder / REVIEW_FOLDER_NAME
 
     @property
     def duplicates_folder(self) -> Path:
         """Folder for invoices already archived before (detected by identity)."""
-        return self.base_output_folder / "_DUPLICADOS"
+        return self.base_output_folder / DUPLICATES_FOLDER_NAME
 
     def known_cuits(self) -> list[str]:
         return [society.cuit for society in self.societies]
@@ -214,8 +218,8 @@ def default_config() -> AppConfig:
     return AppConfig(
         input_folder=Path(user_downloads_dir()),
         base_output_folder=base,
-        unknown_folder=base / "_SIN_CLASIFICAR",
-        quarantine_folder=base / "_ERRORES",
+        unknown_folder=base / UNKNOWN_FOLDER_NAME,
+        quarantine_folder=base / QUARANTINE_FOLDER_NAME,
         orders_folder=home / "Automator" / "Ordenes de compra",
     )
 

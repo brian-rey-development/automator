@@ -219,3 +219,15 @@ def test_purchase_order_without_cuit_keeps_buyer_name() -> None:
     assert invoice.document_type is DocumentType.ORDEN_COMPRA
     assert invoice.buyer_cuit is None
     assert invoice.buyer_name == "COMPRADORA UNO S.A."
+
+
+def test_factura_that_mentions_orden_de_compra_stays_a_factura() -> None:
+    text = (
+        "FACTURA\nCod. 01\nRazon Social: PROVEEDOR EJEMPLO SRL\n"
+        "Punto de Venta: 0001    Comp. Nro: 00000123\n"
+        "Observaciones: Entregar contra ORDEN DE COMPRA 2026-0001\n"
+    )
+    invoice = parse_invoice(text)
+    assert invoice.document_type is DocumentType.FACTURA
+    assert invoice.supplier == "PROVEEDOR EJEMPLO SRL"
+    assert invoice.full_number == "0001-00000123"

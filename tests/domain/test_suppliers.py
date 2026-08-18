@@ -84,6 +84,16 @@ def test_len_reports_supplier_count() -> None:
     assert len(registry) == 2
 
 
+def test_shared_alias_does_not_guess_a_supplier() -> None:
+    registry = SupplierRegistry(
+        [
+            _supplier("30999999995", "Acme Norte SA", extra_aliases=("acme sa",)),
+            _supplier("30707730214", "Acme Sur SA", extra_aliases=("acme sa",)),
+        ]
+    )
+    assert registry.match("Factura ACME SA total 100", exclude_cuits=set()) is None
+
+
 def test_short_alias_does_not_match_every_invoice() -> None:
     registry = SupplierRegistry(
         [_supplier("30999999995", "Proveedor Ejemplo SA", extra_aliases=("SA",))],

@@ -41,15 +41,19 @@ def wait_until_stable(
         time.sleep(poll_interval_s)
 
 
+def path_exists(path: Path) -> bool:
+    return os.path.exists(_os_path(path))
+
+
 def unique_destination(path: Path) -> Path:
     """Returns a path that does not exist, appending ' (n)' on collision."""
-    if not path.exists():
+    if not path_exists(path):
         return path
     parent, stem, suffix = path.parent, path.stem, path.suffix
     counter = 2
     while True:
         candidate = parent / f"{stem} ({counter}){suffix}"
-        if not candidate.exists():
+        if not path_exists(candidate):
             return candidate
         counter += 1
 
@@ -63,8 +67,8 @@ def move_file(source: Path, target_dir: Path, filename: str) -> Path:
     """
     target_dir.mkdir(parents=True, exist_ok=True)
     desired = target_dir / filename
-    if desired.exists() and desired.samefile(source):
-        return source  # Already at its destination (a reprocessed file): never duplicate it.
+    if _already_at(source, desired):
+        return source
     target = unique_destination(desired)
     shutil.move(_os_path(source), _os_path(target))
     return target
@@ -77,9 +81,19 @@ def copy_file(source: Path, target_dir: Path, filename: str) -> Path:
     the engine uses to avoid reprocessing stays stable.
     """
     target_dir.mkdir(parents=True, exist_ok=True)
-    target = unique_destination(target_dir / filename)
+    desired = target_dir / filename
+    if _already_at(source, desired):
+        return source
+    target = unique_destination(desired)
     shutil.copy2(_os_path(source), _os_path(target))
     return target
+
+
+def _already_at(source: Path, desired: Path) -> bool:
+    try:
+        return path_exists(desired) and os.path.samefile(_os_path(source), _os_path(desired))
+    except OSError:
+        return False
 
 
 def _safe_size(path: Path) -> int:
