@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from automator.config import SocietyMapping
 from automator.ui.theme import CORNER_RADIUS, Palette
+from automator.ui.widgets import make_modal
 
 _ALIAS_SEPARATOR = ","
 
@@ -80,13 +81,7 @@ class SocietyDialog(ctk.CTkToplevel):
         self.destroy()
 
     def _make_modal(self, master: tk.Misc) -> None:
-        self.transient(master.winfo_toplevel())
-        self.bind("<Return>", lambda _event: self._save())
-        self.bind("<Escape>", lambda _event: self.destroy())
-        # grab_set fails if the window is not yet visible: wait until it is.
-        self.wait_visibility()
-        self.grab_set()
-        self.focus_set()
+        make_modal(self, master, on_return=self._save, on_escape=self.destroy)
 
 
 def _parse_aliases(raw: str) -> tuple[str, ...]:

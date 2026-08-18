@@ -37,8 +37,10 @@ from automator.services.supplier_store import SupplierRegistryStore, SupplierSto
 from automator.ui.import_report_dialog import ImportReportDialog
 from automator.ui.onboarding import OnboardingDialog
 from automator.ui.society_dialog import SocietyDialog
+from automator.ui.strings import CLEAR_HISTORY_CONFIRM, OUTCOME_LABELS, OUTCOME_ROW_TAG
 from automator.ui.system_utils import notify, open_folder
 from automator.ui.theme import CORNER_RADIUS, Palette, configure_table_style, create_brand_mark, font_family
+from automator.ui.widgets import ghost_button, primary_button, secondary_button
 
 logger = logging.getLogger(__name__)
 
@@ -49,35 +51,9 @@ _MAX_SUPPLIER_RESULTS = 20  # The search shows a bounded slice, never thousands 
 _CUIT_LENGTH = 11
 
 # Icon glyphs: inherit the button text color and do not depend on assets.
-_ICON_RETRY = "↻"  # circular arrow: retry
-_ICON_UNDO = "↶"  # return arrow: undo
-_ICON_REFRESH = "⟳"  # wide circular arrow: refresh
-_CLEAR_HISTORY_CONFIRM = (
-    "Se borra el historial de procesamiento: duplicados, revisiones y archivos ya vistos.\n\n"
-    "Los PDF no se mueven ni se eliminan.\n\n"
-    "Despues vas a poder reprocesar y revisar de nuevo. Continuar?"
-)
-
-_OUTCOME_LABELS: dict[ProcessOutcome, str] = {
-    ProcessOutcome.MOVED: "Archivado",
-    ProcessOutcome.DRY_RUN: "Simulado",
-    ProcessOutcome.UNCLASSIFIED: "Sin clasificar",
-    ProcessOutcome.DUPLICATE: "Duplicado",
-    ProcessOutcome.NEEDS_REVIEW: "Revisar",
-    ProcessOutcome.QUARANTINED: "Cuarentena",
-    ProcessOutcome.ERROR: "Error",
-    ProcessOutcome.SKIPPED_MISSING: "Omitido",
-}
-_OUTCOME_ROW_TAG: dict[ProcessOutcome, str] = {
-    ProcessOutcome.MOVED: "ok",
-    ProcessOutcome.DRY_RUN: "ok",
-    ProcessOutcome.UNCLASSIFIED: "warn",
-    ProcessOutcome.DUPLICATE: "warn",
-    ProcessOutcome.NEEDS_REVIEW: "warn",
-    ProcessOutcome.QUARANTINED: "warn",
-    ProcessOutcome.ERROR: "error",
-    ProcessOutcome.SKIPPED_MISSING: "warn",
-}
+_ICON_RETRY = "↻"
+_ICON_UNDO = "↶"
+_ICON_REFRESH = "⟳"
 _STAT_CARDS = (
     ("detected", "Detectados", Palette.TEXT),
     ("archived", "Archivados", Palette.SUCCESS),
@@ -158,49 +134,13 @@ class MainWindow(ctk.CTkFrame):
     # --- Reusable widget factories -----------------------------------------
 
     def _primary_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
-        # Primary: brand color (lime). The lead action of each view.
-        return ctk.CTkButton(
-            parent,
-            text=text,
-            font=self._f_h2,
-            height=44,
-            corner_radius=CORNER_RADIUS,
-            fg_color=Palette.ACCENT,
-            hover_color=Palette.ACCENT_HOVER,
-            text_color=Palette.ACCENT_TEXT,
-            command=command,
-        )
+        return primary_button(parent, text, command, font=self._f_h2)
 
     def _secondary_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
-        # Secondary: dark with white text. Strong but below the primary.
-        return ctk.CTkButton(
-            parent,
-            text=text,
-            font=self._f_body,
-            height=40,
-            corner_radius=CORNER_RADIUS,
-            fg_color=Palette.PRIMARY,
-            hover_color=Palette.SIDEBAR_HOVER,
-            text_color="#ffffff",
-            command=command,
-        )
+        return secondary_button(parent, text, command, font=self._f_body)
 
     def _ghost_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
-        # Tertiary: muted gray that lights up (color + subtle background) on hover.
-        button = ctk.CTkButton(
-            parent,
-            text=text,
-            font=self._f_body,
-            height=40,
-            corner_radius=CORNER_RADIUS,
-            fg_color="transparent",
-            hover_color=Palette.SURFACE_ALT,
-            text_color=Palette.MUTED,
-            command=command,
-        )
-        button.bind("<Enter>", lambda _event: button.configure(text_color=Palette.TEXT))
-        button.bind("<Leave>", lambda _event: button.configure(text_color=Palette.MUTED))
-        return button
+        return ghost_button(parent, text, command, font=self._f_body)
 
     def _hint(self, parent: tk.Misc, text: str) -> ctk.CTkLabel:
         return ctk.CTkLabel(parent, text=text, font=self._f_hint, text_color=Palette.MUTED, anchor="w", justify="left")
@@ -543,7 +483,7 @@ class MainWindow(ctk.CTkFrame):
         if self._engine.is_running:
             messagebox.showinfo("Vaciar historial", "Deten el monitor antes de vaciar el historial.")
             return
-        if not messagebox.askyesno("Vaciar historial", _CLEAR_HISTORY_CONFIRM, icon="warning"):
+        if not messagebox.askyesno("Vaciar historial", CLEAR_HISTORY_CONFIRM, icon="warning"):
             return
         self._ledger.clear()
         self._reset_session_stats()
@@ -1117,7 +1057,7 @@ class MainWindow(ctk.CTkFrame):
         voucher = result.invoice.voucher.label if result.invoice else ""
         destination = str(result.destination) if result.destination else result.message
         counted = result.counted_outcome
-        self._append_log(result.source.name, voucher, _status_label(result), _OUTCOME_ROW_TAG[counted], destination)
+        self._append_log(result.source.name, voucher, _status_label(result), OUTCOME_ROW_TAG[counted], destination)
 
     def _reset_session_stats(self) -> None:
         self._counts = dict.fromkeys(self._counts, 0)
@@ -1170,8 +1110,8 @@ def _count_key(result: ProcessResult) -> str:
 
 def _status_label(result: ProcessResult) -> str:
     if result.outcome is ProcessOutcome.DRY_RUN and result.intended is not None:
-        return f"Simulado · {_OUTCOME_LABELS[result.intended]}"
-    return _OUTCOME_LABELS[result.outcome]
+        return f"Simulado · {OUTCOME_LABELS[result.intended]}"
+    return OUTCOME_LABELS[result.outcome]
 
 
 def _format_validation_error(exc: ValidationError) -> str:
@@ -1194,7 +1134,7 @@ def _count_pdfs(folder: Path) -> int:
 
 def _history_row(record: LedgerRecord) -> tuple[str, str, str, str, str]:
     when = record.ts.replace("T", "  ")
-    estado = _OUTCOME_LABELS.get(record.outcome, record.outcome.value)
+    estado = OUTCOME_LABELS.get(record.outcome, record.outcome.value)
     if record.reverted:
         estado = f"{estado} (deshecho)"
     destino = record.destination or record.message
@@ -1202,7 +1142,7 @@ def _history_row(record: LedgerRecord) -> tuple[str, str, str, str, str]:
 
 
 def _history_tag(record: LedgerRecord) -> str:
-    return "warn" if record.reverted else _OUTCOME_ROW_TAG.get(record.outcome, "warn")
+    return "warn" if record.reverted else OUTCOME_ROW_TAG.get(record.outcome, "warn")
 
 
 def _open_ledger() -> Ledger | None:

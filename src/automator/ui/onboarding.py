@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from automator.config import QUARANTINE_FOLDER_NAME, UNKNOWN_FOLDER_NAME, AppConfig, SocietyMapping
 from automator.ui.theme import CORNER_RADIUS, Palette
+from automator.ui.widgets import make_modal
 
 
 class OnboardingDialog(ctk.CTkToplevel):
@@ -116,7 +117,4 @@ class OnboardingDialog(ctk.CTkToplevel):
         return (SocietyMapping(cuit=cuit, name=name),)
 
     def _make_modal(self, master: tk.Misc) -> None:
-        self.transient(master.winfo_toplevel())
-        self.wait_visibility()
-        self.grab_set()
-        self.focus_set()
+        make_modal(self, master, on_return=self._finish, on_escape=self.destroy)

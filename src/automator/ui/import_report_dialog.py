@@ -7,6 +7,7 @@ import tkinter as tk
 import customtkinter as ctk
 
 from automator.ui.theme import CORNER_RADIUS, Palette
+from automator.ui.widgets import make_modal
 
 _MAX_INVALID_SHOWN = 30
 
@@ -56,9 +57,4 @@ class ImportReportDialog(ctk.CTkToplevel):
             )
 
     def _make_modal(self, master: tk.Misc) -> None:
-        self.transient(master.winfo_toplevel())
-        self.bind("<Return>", lambda _event: self.destroy())
-        self.bind("<Escape>", lambda _event: self.destroy())
-        self.wait_visibility()
-        self.grab_set()
-        self.focus_set()
+        make_modal(self, master, on_return=self.destroy, on_escape=self.destroy)
