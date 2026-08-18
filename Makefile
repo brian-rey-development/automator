@@ -7,7 +7,7 @@ PIP := $(VENV)/bin/pip
 BIN := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev run samples demo icon lock lint format typecheck test cov check build clean
+.PHONY: help install dev run samples demo icon lock lint format format-check typecheck test cov import-lint file-size check build clean
 
 help: ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -41,6 +41,9 @@ format: ## Formatea y ordena imports con ruff
 	$(BIN)/ruff format .
 	$(BIN)/ruff check . --fix
 
+format-check: ## Verifica el formato sin modificar archivos
+	$(BIN)/ruff format --check .
+
 typecheck: ## Chequeo de tipos estricto con mypy
 	$(BIN)/mypy
 
@@ -50,7 +53,13 @@ test: ## Ejecuta la bateria de tests
 cov: ## Ejecuta los tests con reporte de cobertura
 	$(BIN)/pytest --cov
 
-check: lint typecheck test ## Corre linting, tipos y tests (usar antes de commitear)
+import-lint: ## Enforcea ui -> services -> domain
+	PYTHONPATH=src $(BIN)/lint-imports
+
+file-size: ## Falla si un modulo de produccion supera 250 lineas
+	$(PY) scripts/check_file_size.py
+
+check: lint format-check typecheck cov import-lint file-size ## Corre linting, tipos, tests con cobertura y contratos
 
 build: icon ## Genera el ejecutable con PyInstaller (genera el icono primero)
 	$(BIN)/pyinstaller automator.spec --noconfirm --clean

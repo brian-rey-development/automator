@@ -45,6 +45,27 @@ def test_record_and_recent(tmp_path: Path) -> None:
     ledger.close()
 
 
+def test_archived_destination_returns_latest_existing_path(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "h.db")
+    invoice = _invoice()
+    assert invoice.identity is not None
+    first = tmp_path / "a.pdf"
+    first.write_text("one")
+    ledger.record(_result(ProcessOutcome.MOVED, first, invoice))
+    assert ledger.archived_destination(invoice.identity) == str(first)
+    ledger.close()
+
+
+def test_archived_destination_ignores_review_and_null_destination(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "h.db")
+    invoice = _invoice()
+    assert invoice.identity is not None
+    ledger.record(_result(ProcessOutcome.NEEDS_REVIEW, tmp_path / "r.pdf", invoice))
+    ledger.record(_result(ProcessOutcome.MOVED, None, invoice))
+    assert ledger.archived_destination(invoice.identity) is None
+    ledger.close()
+
+
 def test_identity_exists_only_for_archived(tmp_path: Path) -> None:
     ledger = Ledger(tmp_path / "h.db")
     invoice = _invoice()

@@ -13,7 +13,7 @@ from automator.domain.suppliers import Supplier, SupplierRegistry
 from automator.services import engine as engine_module
 from automator.services.engine import EngineEvent, EngineEventType, ProcessingEngine
 from automator.services.ledger import Ledger
-from tests.conftest import FACTURA_A_TEXT
+from fixtures.invoices import FACTURA_A_TEXT
 
 
 def _engine(config: AppConfig, sink: Callable[[EngineEvent], None], text: str) -> ProcessingEngine:
@@ -167,9 +167,15 @@ def test_reprocess_pending_finds_pdfs_nested_in_supplier_subfolders(
     (nested / "factura.pdf").write_bytes(b"%PDF")
     events: list[EngineEvent] = []
 
-    total = _engine(config, events.append, FACTURA_A_TEXT).reprocess_pending()
+    engine = _engine(config, events.append, FACTURA_A_TEXT)
+    total = engine.reprocess_pending()
+    nested_pdf = nested / "factura.pdf"
 
     assert total == 1
+    result = engine.process_now(nested_pdf)
+    assert result.outcome is ProcessOutcome.MOVED
+    assert result.destination is not None
+    assert result.destination.exists()
 
 
 def test_sink_errors_do_not_crash_engine(
@@ -183,3 +189,31 @@ def test_sink_errors_do_not_crash_engine(
     # It must not propagate the sink exception.
     result = _engine(config, broken_sink, FACTURA_A_TEXT).process_now(source)
     assert result.outcome is ProcessOutcome.MOVED
+
+
+def test_worker_emits_error_when_processor_raises(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    events: list[EngineEvent] = []
+    engine = _engine(make_config(), events.append, FACTURA_A_TEXT)
+    source = dummy_pdf("boom.pdf")
+
+    def boom(_path: Path) -> object:
+        raise RuntimeError("boom")
+
+    engine._processor.process = boom  # type: ignore[method-assign]
+    engine._safe_process(source)
+    assert any(event.type is EngineEventType.ERROR for event in events)
+    assert any("boom" in event.message for event in events)
+
+
+def test_process_existing_emits_error_when_input_is_unreadable(
+    make_config: Callable[..., AppConfig],
+) -> None:
+    config = make_config()
+    config.input_folder.parent.mkdir(parents=True, exist_ok=True)
+    config.input_folder.write_text("not-a-directory", encoding="utf-8")
+    events: list[EngineEvent] = []
+    count = _engine(config, events.append, FACTURA_A_TEXT).process_existing()
+    assert count == 0
+    assert any(event.type is EngineEventType.ERROR for event in events)

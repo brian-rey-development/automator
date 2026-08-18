@@ -14,6 +14,8 @@ _TYPE_LENGTH = 2  # Leading "type" block (20, 27, 30, ...); never zero-padded.
 _BODY_LENGTH = 8  # DNI block, zero-padded to 8 in a canonical CUIT.
 _MIN_RECOVERABLE = 9  # Below this, too many digits are missing to trust a rebuild.
 _CHECK_WEIGHTS = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
+_AFIP_MODULO = 11
+_INVALID_CHECK_DIGIT = 10
 _NON_DIGITS = re.compile(r"\D")
 _SEPARATORS = re.compile(r"[\s.\-]")
 # A CUIT is 11 digits (2 + 8 + 1) with at most one optional separator between blocks.
@@ -48,9 +50,9 @@ def is_valid_cuit(digits: str) -> bool:
     if len(digits) != CUIT_LENGTH or not digits.isdigit():
         return False
     total = sum(int(digit) * weight for digit, weight in zip(digits[:10], _CHECK_WEIGHTS, strict=True))
-    expected = 11 - (total % 11)
-    expected = 0 if expected == 11 else expected
-    return expected != 10 and expected == int(digits[10])
+    expected = _AFIP_MODULO - (total % _AFIP_MODULO)
+    expected = 0 if expected == _AFIP_MODULO else expected
+    return expected != _INVALID_CHECK_DIGIT and expected == int(digits[-1])
 
 
 def extract_cuits(text: str) -> set[str]:

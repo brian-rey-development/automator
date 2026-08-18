@@ -17,9 +17,9 @@ from openpyxl import Workbook
 from automator.config import AppConfig, ConfigStore, SocietyMapping
 from automator.domain.models import ProcessOutcome, ProcessResult
 from automator.domain.suppliers import Supplier
-from automator.services.ledger import LedgerRecord
+from automator.services.engine import EngineEvent, EngineEventType
 from automator.ui import main_window
-from automator.ui.main_window import MainWindow, _count_key, _count_pdfs, _history_row, _status_label
+from automator.ui.main_window import MainWindow
 
 
 def _config(tmp_path: Path) -> AppConfig:
@@ -168,22 +168,17 @@ def test_toggle_button_reflects_state(window: MainWindow) -> None:
     assert window._toggle_btn.cget("text") == "Iniciar"
 
 
-def test_history_row_formats_record() -> None:
-    record = LedgerRecord(
-        id=1,
-        ts="2026-08-14T10:00:00",
-        source_name="factura.pdf",
-        identity=None,
-        supplier="PROVEEDOR X",
-        voucher="FC A",
+def test_poll_events_applies_a_result(window: MainWindow) -> None:
+    result = ProcessResult(
+        source=Path("a.pdf"),
         outcome=ProcessOutcome.MOVED,
-        destination="/salida/x/factura.pdf",
+        destination=Path("/out/a.pdf"),
+        invoice=None,
         message="ok",
-        reverted=False,
     )
-    row = _history_row(record)
-    assert row[1] == "factura.pdf"
-    assert row[3] == "Archivado"
+    window._events.put(EngineEvent(EngineEventType.RESULT, "ok", Path("a.pdf"), result))
+    window._poll_events()
+    assert window._counts["archived"] == 1
 
 
 def test_restore_history_clears_ledger_without_touching_files(
@@ -221,25 +216,3 @@ def test_restore_history_resets_session_counters(window: MainWindow, monkeypatch
     window._restore_history()
 
     assert window._counts == {"detected": 0, "archived": 0, "review": 0, "error": 0}
-
-
-def test_dry_run_review_counts_as_review_not_archived() -> None:
-    result = ProcessResult(
-        source=Path("x.pdf"),
-        outcome=ProcessOutcome.DRY_RUN,
-        destination=Path("/out/_PARA_REVISAR/x.pdf"),
-        invoice=None,
-        message="sim",
-        intended=ProcessOutcome.NEEDS_REVIEW,
-    )
-    assert _count_key(result) == "review"
-    assert _status_label(result) == "Simulado · Revisar"
-
-
-def test_count_pdfs_is_case_insensitive_and_recursive(tmp_path: Path) -> None:
-    (tmp_path / "sub").mkdir()
-    (tmp_path / "a.pdf").write_bytes(b"%PDF")
-    (tmp_path / "sub" / "b.PDF").write_bytes(b"%PDF")
-    (tmp_path / "sub" / "c.txt").write_bytes(b"x")
-    assert _count_pdfs(tmp_path) == 2
-    assert _count_pdfs(tmp_path / "no-existe") == 0

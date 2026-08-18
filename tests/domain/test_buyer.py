@@ -5,7 +5,7 @@ from __future__ import annotations
 from automator.config import SocietyMapping
 from automator.domain.buyer import resolve_buyer
 from automator.domain.models import DocumentType, ParsedInvoice, Voucher, VoucherKind
-from tests.conftest import CUIT_ONE, CUIT_TWO
+from fixtures.invoices import CUIT_ONE, CUIT_TWO
 
 
 def _order(buyer_cuit: str | None = None, buyer_name: str | None = None, ambiguous: bool = False) -> ParsedInvoice:

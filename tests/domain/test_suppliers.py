@@ -82,3 +82,10 @@ def test_search_finds_by_partial_name() -> None:
 def test_len_reports_supplier_count() -> None:
     registry = SupplierRegistry([_supplier("30999999995", "A"), _supplier("30707730214", "B")])
     assert len(registry) == 2
+
+
+def test_short_alias_does_not_match_every_invoice() -> None:
+    registry = SupplierRegistry(
+        [_supplier("30999999995", "Proveedor Ejemplo SA", extra_aliases=("SA",))],
+    )
+    assert registry.match("FACTURA A SA COMPROBANTE", exclude_cuits=set()) is None

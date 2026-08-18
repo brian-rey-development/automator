@@ -7,7 +7,7 @@ import pytest
 from automator.domain.filenames import build_filename
 from automator.domain.models import DocumentType, VoucherKind
 from automator.domain.parser import parse_invoice
-from tests.conftest import (
+from fixtures.invoices import (
     AMBIGUOUS_STANDALONE_TEXT,
     COLUMN_BLEED_ORDER_TEXT,
     COLUMN_BLEED_SUPPLIER_TEXT,

@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
+
 from automator.config import AppConfig, SocietyMapping
 from automator.domain.models import ProcessOutcome
 from automator.domain.suppliers import Supplier, SupplierRegistry
 from automator.services.processor import InvoiceProcessor
-from tests.conftest import (
+from fixtures.invoices import (
     CUIT_ONE,
     CUIT_TWO,
     FACTURA_A_TEXT,
@@ -269,3 +271,85 @@ def test_purchase_order_without_society_goes_to_sin_sociedad(
     assert result.outcome is ProcessOutcome.UNCLASSIFIED
     assert result.destination is not None
     assert config.orders_folder / "_SIN_SOCIEDAD" in result.destination.parents
+
+
+def test_unstable_download_is_quarantined(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config(wait_for_stability=True, stability_timeout_s=0)
+    source = dummy_pdf("parcial.pdf")
+    result = _processor(config, FACTURA_A_TEXT).process(source)
+    assert result.outcome is ProcessOutcome.QUARANTINED
+    assert result.destination is not None
+    assert config.quarantine_folder in result.destination.parents
+
+
+def test_archive_failure_goes_to_quarantine(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from automator.services import file_ops
+
+    config = make_config()
+    source = dummy_pdf("archivo.pdf")
+    original = file_ops.move_file
+    calls = {"n": 0}
+
+    def flaky_move(src: Path, target_dir: Path, filename: str) -> Path:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("disk")
+        return original(src, target_dir, filename)
+
+    monkeypatch.setattr(file_ops, "move_file", flaky_move)
+    result = _processor(config, FACTURA_A_TEXT).process(source)
+    assert result.outcome is ProcessOutcome.QUARANTINED
+    assert result.destination is not None
+    assert config.quarantine_folder in result.destination.parents
+
+
+def test_quarantine_failure_leaves_file_in_input(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from automator.services import file_ops
+
+    config = make_config()
+    source = dummy_pdf("archivo.pdf")
+    monkeypatch.setattr(file_ops, "move_file", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk")))
+    result = _processor(config, FACTURA_A_TEXT).process(source)
+    assert result.outcome is ProcessOutcome.ERROR
+    assert source.exists()
+
+
+def test_dry_run_empty_pdf_is_error_not_quarantine(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config(dry_run=True)
+    source = dummy_pdf("vacio.pdf")
+    result = _processor(config, "").process(source)
+    assert result.outcome is ProcessOutcome.ERROR
+    assert source.exists()
+
+
+def test_unknown_supplier_with_number_goes_to_review(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    from fixtures.invoices import NO_RAZON_SOCIAL_TEXT
+
+    config = make_config()
+    source = dummy_pdf("sin_proveedor.pdf")
+    result = _processor(config, NO_RAZON_SOCIAL_TEXT).process(source)
+    assert result.outcome is ProcessOutcome.NEEDS_REVIEW
+    assert result.destination is not None
+    assert config.review_folder in result.destination.parents
+
+
+def test_supplier_equal_to_society_lands_in_review_folder(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config()
+    source = dummy_pdf("comprador.pdf")
+    text = "FACTURA\nCod. 01\nRazon Social: COMPRADORA UNO SA\nComp. Nro: 0001-00000009\n"
+    result = _processor(config, text).process(source)
+    assert result.outcome is ProcessOutcome.NEEDS_REVIEW
+    assert result.destination is not None
+    assert config.review_folder in result.destination.parents

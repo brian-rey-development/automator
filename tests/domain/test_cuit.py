@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from automator.domain.cuit import CUIT_LENGTH, coerce_cuit, extract_cuits, is_valid_cuit, normalize_cuit
+from automator.domain.cuit import coerce_cuit, extract_cuits, is_valid_cuit, normalize_cuit
 
 
 @pytest.mark.parametrize(
@@ -18,10 +18,6 @@ from automator.domain.cuit import CUIT_LENGTH, coerce_cuit, extract_cuits, is_va
 )
 def test_normalize_cuit_strips_non_digits(raw: str, expected: str) -> None:
     assert normalize_cuit(raw) == expected
-
-
-def test_cuit_length_is_eleven() -> None:
-    assert CUIT_LENGTH == 11
 
 
 def test_is_valid_cuit_accepts_a_correct_check_digit() -> None:

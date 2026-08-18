@@ -13,6 +13,7 @@ from automator.config import (
     SocietyMapping,
     default_config,
     load_config,
+    load_store,
     save_config,
 )
 
@@ -171,3 +172,38 @@ def test_review_folder_is_under_output() -> None:
     config = default_config()
     assert config.review_folder.parent == config.base_output_folder
     assert config.review_folder in config.all_folders()
+
+
+def test_unreadable_config_file_is_preserved(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    original = default_config().model_dump_json()
+    path.write_text(original, encoding="utf-8")
+    path.chmod(0)
+    try:
+        loaded = load_config(path)
+    finally:
+        path.chmod(0o644)
+    assert loaded == default_config()
+    assert path.read_text(encoding="utf-8") == original
+    assert list(tmp_path.glob("config.json.*.corrupt")) == []
+
+
+def test_update_does_not_commit_memory_if_save_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "config.json"
+    store = ConfigStore(default_config(), path)
+    store.save()
+    incoming = default_config().model_copy(update={"dry_run": True})
+    monkeypatch.setattr(
+        "automator.config.save_config",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk")),
+    )
+    with pytest.raises(OSError, match="disk"):
+        store.update(incoming)
+    assert store.get().dry_run is False
+
+
+def test_load_store_writes_default_when_missing(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    store = load_store(path)
+    assert path.exists()
+    assert store.get() == default_config()

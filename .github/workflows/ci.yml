@@ -39,6 +39,12 @@ jobs:
       - name: Mypy (tipos)
         run: mypy
 
+      - name: Import linter (capas)
+        run: PYTHONPATH=src lint-imports
+
+      - name: File size
+        run: python scripts/check_file_size.py
+
       - name: Pytest (tests + cobertura, bajo xvfb para la UI)
         run: xvfb-run -a pytest --cov
 
