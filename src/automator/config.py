@@ -13,6 +13,7 @@ from pathlib import Path
 from platformdirs import user_config_dir, user_data_dir, user_downloads_dir, user_log_dir
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from automator.domain.cuit import CUIT_LENGTH, coerce_cuit, is_valid_cuit
 from automator.domain.filenames import sanitize_component
 
 logger = logging.getLogger(__name__)
@@ -20,20 +21,10 @@ logger = logging.getLogger(__name__)
 APP_NAME = "Automator"
 APP_AUTHOR = "Brian Rey"
 
-_CUIT_LENGTH = 11
-_CUIT_WEIGHTS = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
 _MIN_STABILITY_TIMEOUT = 0.0
 _MAX_STABILITY_TIMEOUT = 120.0
 _TEMPLATE_TOKENS = {"supplier", "society", "year", "month", "day"}
 _ORDERS_NO_SOCIETY = "_SIN_SOCIEDAD"  # Subfolder for purchase orders with no identified buyer.
-
-
-def _is_valid_cuit(digits: str) -> bool:
-    """Validate the CUIT check digit (AFIP modulo 11 algorithm)."""
-    total = sum(int(digit) * weight for digit, weight in zip(digits[:10], _CUIT_WEIGHTS, strict=True))
-    expected = 11 - (total % 11)
-    expected = 0 if expected == 11 else expected
-    return expected != 10 and expected == int(digits[10])
 
 
 def _is_within(child: Path, parent: Path) -> bool:
@@ -62,21 +53,26 @@ def log_dir() -> Path:
 
 
 class SocietyMapping(BaseModel):
-    """Association between a company's CUIT and its suppliers folder."""
+    """A buying company: its CUIT, legal name and optional trade name/aliases.
+
+    The destination folder is not stored: it is derived from the output base and
+    the legal name (base/{Razon Social}), so every company files under one root.
+    """
 
     model_config = ConfigDict(frozen=True)  # Immutable: can be shared without copying.
 
     cuit: str
     name: str
-    folder: Path
+    nombre_fantasia: str | None = None
+    aliases: tuple[str, ...] = ()
 
     @field_validator("cuit")
     @classmethod
     def _normalize_cuit(cls, value: str) -> str:
-        digits = re.sub(r"\D", "", value)
-        if len(digits) != _CUIT_LENGTH:
-            raise ValueError(f"El CUIT debe tener {_CUIT_LENGTH} digitos: '{value}'")
-        if not _is_valid_cuit(digits):
+        digits = coerce_cuit(value)
+        if len(digits) != CUIT_LENGTH:
+            raise ValueError(f"El CUIT debe tener {CUIT_LENGTH} digitos: '{value}'")
+        if not is_valid_cuit(digits):
             raise ValueError(f"El CUIT no es valido (digito verificador incorrecto): '{value}'")
         return digits
 
@@ -87,14 +83,10 @@ class SocietyMapping(BaseModel):
             raise ValueError("La razon social no puede estar vacia.")
         return value.strip()
 
-    @field_validator("folder")
-    @classmethod
-    def _folder_must_be_absolute(cls, value: Path) -> Path:
-        # An empty folder would resolve to Path('.') (the working directory) and
-        # would archive invoices in an unpredictable place: an absolute path is required.
-        if not str(value).strip() or not value.is_absolute():
-            raise ValueError("La carpeta debe ser una ruta absoluta (elegila con 'Elegir').")
-        return value
+    def match_names(self) -> tuple[str, ...]:
+        """Legal name plus trade name and aliases, for name-based buyer matching."""
+        extra = (self.nombre_fantasia,) if self.nombre_fantasia else ()
+        return (self.name, *extra, *self.aliases)
 
 
 class AppConfig(BaseModel):
@@ -134,7 +126,7 @@ class AppConfig(BaseModel):
         # An output folder inside the input one would make the watcher detect
         # the just-archived files and reprocess them in an infinite loop.
         outputs = [self.base_output_folder, self.unknown_folder, self.quarantine_folder, self.orders_folder]
-        outputs.extend(society.folder for society in self.societies)
+        outputs.extend(self.society_folder(society) for society in self.societies)
         if any(_is_within(folder, self.input_folder) for folder in outputs):
             raise ValueError("Las carpetas de salida no pueden estar dentro de la carpeta de entrada.")
         return self
@@ -169,9 +161,13 @@ class AppConfig(BaseModel):
             return None
         return next((society for society in self.societies if society.cuit == cuit), None)
 
+    def society_folder(self, society: SocietyMapping) -> Path:
+        """Each company files under a standardized folder: base/{Razon Social}."""
+        return self.base_output_folder / sanitize_component(society.name)
+
     def folder_for_cuit(self, cuit: str | None) -> Path:
         society = self.society_for_cuit(cuit)
-        return society.folder if society is not None else self.unknown_folder
+        return self.society_folder(society) if society is not None else self.unknown_folder
 
     def orders_base_for(self, cuit: str | None) -> Path:
         # Purchase orders live under orders_folder, split by buying company; when the
@@ -190,7 +186,7 @@ class AppConfig(BaseModel):
             self.duplicates_folder,
             self.orders_folder,
         ]
-        folders.extend(society.folder for society in self.societies)
+        folders.extend(self.society_folder(society) for society in self.societies)
         return folders
 
     def ensure_folders(self) -> None:

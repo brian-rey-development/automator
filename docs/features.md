@@ -9,9 +9,12 @@ CUIT preloaded: on first launch a wizard helps you define the bare minimum.
   with a text-based fallback when the code is not present.
 - **Number and point of sale**, tolerating both the split and the combined
   layout.
-- **Supplier** from the "Razon Social" label. If it is not detected with
-  confidence, the invoice goes to review (it is not filed under an invented
-  name).
+- **Supplier** identified against the imported supplier registry: any known
+  supplier's CUIT (or name) found in the invoice text canonicalizes the filing
+  name, so the same supplier always lands in the same folder no matter how its
+  invoice is laid out. Falls back to the "Razon Social" label when the supplier
+  is not registered; if nothing is detected with confidence the invoice goes to
+  review (never filed under an invented name).
 - **Buyer company** by CUIT, against the configured companies.
 - **Issue date**, used by the folder template.
 
@@ -31,11 +34,27 @@ Each invoice ends up in a place that depends on how reliable the reading was:
 The guiding principle is **never file incorrectly in silence**: when in doubt,
 send it to review.
 
+## Two categories: companies and suppliers
+
+- **Companies** (buyers) are your own entities: CUIT, legal name, optional trade
+  name and aliases. Each one files under a standardized folder
+  `base/{Razon Social}` (no folder is picked by hand). They can be added one by
+  one or imported from Excel.
+- **Suppliers** (issuers) are imported from Excel into a registry (SQLite): CUIT,
+  legal name, trade name and alias variants. The registry is what canonicalizes
+  each invoice's supplier name. A search box finds any supplier without listing
+  thousands of rows.
+
+Both imports read `.xlsx` with tolerant headers (accents, case and dots are
+ignored), fold extra alias columns in, dedupe by CUIT and report per-row errors
+(bad check digit, empty legal name) without aborting the rest.
+
 ## Configurable folder structure
 
-Inside each company's folder a template with tokens is applied:
+The destination is `base/{empresa}/{proveedor}`: the buyer company resolves the
+top folder, and inside it a template with tokens is applied:
 
-- `{supplier}` - supplier company name
+- `{supplier}` - supplier company name (canonical, the default)
 - `{society}` - company folder
 - `{year}` `{month}` `{day}` - from the issue date (or `sin_fecha`)
 

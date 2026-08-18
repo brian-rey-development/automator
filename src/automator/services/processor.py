@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -12,6 +13,7 @@ from automator.domain.classifier import destination_dir
 from automator.domain.filenames import build_filename
 from automator.domain.models import DocumentType, ParsedInvoice, ProcessOutcome, ProcessResult
 from automator.domain.parser import parse_invoice
+from automator.domain.suppliers import SupplierRegistry
 from automator.services import file_ops
 from automator.services.pdf_reader import extract_text
 
@@ -21,10 +23,17 @@ logger = logging.getLogger(__name__)
 TextExtractor = Callable[[Path], str]
 ConfigProvider = Callable[[], AppConfig]
 DuplicateCheck = Callable[[ParsedInvoice], bool]
+RegistryProvider = Callable[[], SupplierRegistry]
+
+_EMPTY_REGISTRY = SupplierRegistry([])
 
 
 def _never_duplicate(_invoice: ParsedInvoice) -> bool:
     return False
+
+
+def _empty_registry() -> SupplierRegistry:
+    return _EMPTY_REGISTRY
 
 
 class InvoiceProcessor:
@@ -35,10 +44,12 @@ class InvoiceProcessor:
         config_provider: ConfigProvider,
         extractor: TextExtractor = extract_text,
         is_duplicate: DuplicateCheck = _never_duplicate,
+        registry_provider: RegistryProvider = _empty_registry,
     ) -> None:
         self._config_provider = config_provider
         self._extractor = extractor
         self._is_duplicate = is_duplicate
+        self._registry_provider = registry_provider
 
     def process(self, source: Path) -> ProcessResult:
         config = self._config_provider()
@@ -58,6 +69,7 @@ class InvoiceProcessor:
             return self._quarantine(source, config, "El PDF no contiene texto legible (posible escaneo).")
         invoice = parse_invoice(text, config.known_cuits())
         buyer = resolve_buyer(invoice, list(config.societies))
+        invoice = self._canonicalize_supplier(invoice, text, buyer)
         if buyer.ambiguous:
             return self._archive(
                 source,
@@ -87,6 +99,19 @@ class InvoiceProcessor:
             )
         outcome, message = _outcome_for(invoice, buyer)
         return self._archive(source, config, invoice, _destination_base(invoice, buyer, config), outcome, message)
+
+    def _canonicalize_supplier(self, invoice: ParsedInvoice, text: str, buyer: BuyerResolution) -> ParsedInvoice:
+        """Replace the printed supplier name with the registry's canonical one, if known.
+
+        The registry is the source of truth: identifying the issuer by CUIT (or name)
+        keeps filing consistent across the many ways a supplier prints its invoices.
+        No match leaves the invoice untouched, never guessing.
+        """
+        exclude = {buyer.cuit} if buyer.cuit else set()
+        match = self._registry_provider().match(text, exclude_cuits=exclude)
+        if match is None:
+            return invoice
+        return dataclasses.replace(invoice, supplier=match.razon_social)
 
     def _archive(
         self,

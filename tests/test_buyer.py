@@ -13,7 +13,7 @@ def _order(buyer_cuit: str | None = None, buyer_name: str | None = None, ambiguo
         voucher=Voucher(VoucherKind.INVOICE, "A"),
         sales_point="2026",
         number="00004046",
-        supplier="RICARDO BARTOLI Y CIA S.R.L",
+        supplier="FERRETERIA EJEMPLO SRL",
         buyer_cuit=buyer_cuit,
         ambiguous_buyer=ambiguous,
         document_type=DocumentType.ORDEN_COMPRA,
@@ -21,8 +21,8 @@ def _order(buyer_cuit: str | None = None, buyer_name: str | None = None, ambiguo
     )
 
 
-def _society(cuit: str, name: str) -> SocietyMapping:
-    return SocietyMapping(cuit=cuit, name=name, folder="/tmp/x")
+def _society(cuit: str, name: str, nombre_fantasia: str | None = None, aliases: tuple[str, ...] = ()) -> SocietyMapping:
+    return SocietyMapping(cuit=cuit, name=name, nombre_fantasia=nombre_fantasia, aliases=aliases)
 
 
 def test_exact_cuit_wins() -> None:
@@ -44,6 +44,26 @@ def test_fuzzy_matches_near_identical_name() -> None:
     assert resolution.cuit == CUIT_ONE
     assert resolution.fuzzy
     assert resolution.score >= 0.90
+
+
+def test_fuzzy_matches_via_alias() -> None:
+    societies = [
+        _society(CUIT_ONE, "COMPRADORA UNO SA", aliases=("La Uno Distribuciones",)),
+        _society(CUIT_TWO, "TOTALMENTE DISTINTA SRL"),
+    ]
+    resolution = resolve_buyer(_order(buyer_name="La Uno Distribuciones"), societies)
+    assert resolution.cuit == CUIT_ONE
+    assert resolution.fuzzy
+
+
+def test_fuzzy_matches_via_nombre_fantasia() -> None:
+    societies = [
+        _society(CUIT_ONE, "COMPRADORA UNO SA", nombre_fantasia="Compradora Uno"),
+        _society(CUIT_TWO, "TOTALMENTE DISTINTA SRL"),
+    ]
+    resolution = resolve_buyer(_order(buyer_name="Compradora Uno"), societies)
+    assert resolution.cuit == CUIT_ONE
+    assert resolution.fuzzy
 
 
 def test_fuzzy_below_threshold_is_not_matched() -> None:

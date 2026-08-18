@@ -8,15 +8,23 @@ from automator.domain.filenames import build_filename
 from automator.domain.models import DocumentType, VoucherKind
 from automator.domain.parser import parse_invoice
 from tests.conftest import (
+    AMBIGUOUS_STANDALONE_TEXT,
+    COLUMN_BLEED_ORDER_TEXT,
+    COLUMN_BLEED_SUPPLIER_TEXT,
     COMBINED_NUMBER_TEXT,
+    COMPROBANTE_WORD_TEXT,
     CUIT_ONE,
     CUIT_TWO,
     FACTURA_A_TEXT,
+    INLINE_NUMERO_TEXT,
     NO_RAZON_SOCIAL_TEXT,
     NOTA_CREDITO_B_TEXT,
     NOTA_DEBITO_B_TEXT,
+    ONLY_IIBB_TEXT,
     ORDEN_COMPRA_NO_CUIT_TEXT,
     ORDEN_COMPRA_TEXT,
+    SPLIT_NUMBER_TEXT,
+    STANDALONE_TABLE_TEXT,
 )
 
 
@@ -44,6 +52,47 @@ def test_supports_combined_number_format() -> None:
     invoice = parse_invoice(COMBINED_NUMBER_TEXT)
     assert invoice.full_number == "0002-00000777"
     assert invoice.voucher.label == "FC A"
+
+
+def test_reads_full_word_comprobante_and_ignores_iibb() -> None:
+    invoice = parse_invoice(COMPROBANTE_WORD_TEXT)
+    assert invoice.full_number == "1238-00002972"
+
+
+def test_reads_inline_numero_label_with_dash() -> None:
+    invoice = parse_invoice(INLINE_NUMERO_TEXT)
+    assert invoice.full_number == "0007-00001522"
+
+
+def test_reads_standalone_table_number_without_grabbing_cuit() -> None:
+    invoice = parse_invoice(STANDALONE_TABLE_TEXT)
+    assert invoice.full_number == "0004-00004899"
+
+
+def test_ambiguous_standalone_numbers_stay_default() -> None:
+    invoice = parse_invoice(AMBIGUOUS_STANDALONE_TEXT)
+    assert not invoice.has_number
+
+
+def test_iibb_alone_is_never_taken_as_number() -> None:
+    invoice = parse_invoice(ONLY_IIBB_TEXT)
+    assert not invoice.has_number
+
+
+def test_reads_split_point_of_sale_and_sequence() -> None:
+    invoice = parse_invoice(SPLIT_NUMBER_TEXT)
+    assert invoice.full_number == "0022-00082809"
+
+
+def test_supplier_capture_stops_at_column_gap() -> None:
+    invoice = parse_invoice(COLUMN_BLEED_SUPPLIER_TEXT)
+    assert invoice.supplier == "PROVEEDOR COLUMNA SRL"
+
+
+def test_order_labels_stop_at_column_gap() -> None:
+    invoice = parse_invoice(COLUMN_BLEED_ORDER_TEXT)
+    assert invoice.supplier == "JIMENEZ LORENZO HECTOR"
+    assert invoice.buyer_name == "ANDREOLI AGRO S.A."
 
 
 def test_supplier_unknown_when_no_razon_social_label() -> None:
@@ -149,7 +198,7 @@ def test_parses_purchase_order() -> None:
     assert invoice.document_type is DocumentType.ORDEN_COMPRA
     assert invoice.type_label == "OC"
     assert invoice.full_number == "2026-00004046"
-    assert invoice.supplier == "RICARDO BARTOLI Y CIA S.R.L"
+    assert invoice.supplier == "FERRETERIA EJEMPLO SRL"
     assert invoice.buyer_cuit == CUIT_ONE
     assert invoice.buyer_name == "COMPRADORA UNO SA"
 
@@ -162,7 +211,7 @@ def test_purchase_order_matches_cuit_across_mixed_formats() -> None:
 
 def test_purchase_order_filename_uses_oc_tag() -> None:
     invoice = parse_invoice(ORDEN_COMPRA_TEXT, [CUIT_ONE])
-    assert build_filename(invoice) == "RICARDO BARTOLI Y CIA S.R.L OC 2026-00004046.pdf"
+    assert build_filename(invoice) == "FERRETERIA EJEMPLO SRL OC 2026-00004046.pdf"
 
 
 def test_purchase_order_without_cuit_keeps_buyer_name() -> None:

@@ -21,10 +21,9 @@ _FUZZY_MARGIN = 0.05  # The best match must beat the runner-up by at least this.
 
 class SocietyLike(Protocol):
     @property
-    def name(self) -> str: ...
-
-    @property
     def cuit(self) -> str: ...
+
+    def match_names(self) -> tuple[str, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,13 +49,18 @@ def resolve_buyer(invoice: ParsedInvoice, societies: list[SocietyLike]) -> Buyer
 def _fuzzy_match(name: str, societies: list[SocietyLike]) -> BuyerResolution:
     if not societies:
         return BuyerResolution(cuit=None, ambiguous=False, fuzzy=False, score=0.0)
-    scored = sorted(((_similarity(name, s.name), s) for s in societies), key=lambda pair: pair[0], reverse=True)
+    scored = sorted(((_best_similarity(name, s), s) for s in societies), key=lambda pair: pair[0], reverse=True)
     best_score, best = scored[0]
     if best_score < _FUZZY_THRESHOLD:
         return BuyerResolution(cuit=None, ambiguous=False, fuzzy=False, score=best_score)
     if len(scored) > 1 and best_score - scored[1][0] < _FUZZY_MARGIN:
         return BuyerResolution(cuit=None, ambiguous=True, fuzzy=False, score=best_score)
     return BuyerResolution(cuit=best.cuit, ambiguous=False, fuzzy=True, score=best_score)
+
+
+def _best_similarity(name: str, society: SocietyLike) -> float:
+    """Best match of the printed name against the society's legal name, trade name and aliases."""
+    return max(_similarity(name, candidate) for candidate in society.match_names())
 
 
 def _similarity(left: str, right: str) -> float:

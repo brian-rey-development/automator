@@ -20,7 +20,7 @@ from automator.domain.models import ParsedInvoice, ProcessOutcome, ProcessResult
 from automator.services.file_ops import is_pdf
 from automator.services.ledger import Ledger
 from automator.services.pdf_reader import extract_text
-from automator.services.processor import InvoiceProcessor, TextExtractor
+from automator.services.processor import InvoiceProcessor, RegistryProvider, TextExtractor, _empty_registry
 from automator.services.watcher import FolderWatcher
 
 logger = logging.getLogger(__name__)
@@ -96,11 +96,14 @@ class ProcessingEngine:
         sink: EventSink,
         extractor: TextExtractor = extract_text,
         ledger: Ledger | None = None,
+        registry_provider: RegistryProvider | None = None,
     ) -> None:
         self._config_provider = config_provider
         self._sink = sink
         self._ledger = ledger
-        self._processor = InvoiceProcessor(config_provider, extractor, self._duplicate_check)
+        self._processor = InvoiceProcessor(
+            config_provider, extractor, self._duplicate_check, registry_provider or _empty_registry
+        )
         self._queue: queue.Queue[object] = queue.Queue()
         self._watcher: FolderWatcher | None = None
         self._worker: threading.Thread | None = None
@@ -237,7 +240,10 @@ class ProcessingEngine:
     def _duplicate_check(self, invoice: ParsedInvoice) -> bool:
         if self._ledger is None or invoice.identity is None:
             return False
-        return self._ledger.identity_exists(invoice.identity)
+        destination = self._ledger.archived_destination(invoice.identity)
+        # A real duplicate only if the previously archived file is still there. If the
+        # original was removed, this copy must be filed, never lost as a phantom duplicate.
+        return destination is not None and Path(destination).exists()
 
     def _record(self, result: ProcessResult) -> None:
         # What no longer exists is not recorded (noise); everything else stays in the history.

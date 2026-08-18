@@ -12,9 +12,11 @@ from pathlib import Path
 
 import customtkinter as ctk
 import pytest
+from openpyxl import Workbook
 
 from automator.config import AppConfig, ConfigStore, SocietyMapping
 from automator.domain.models import ProcessOutcome, ProcessResult
+from automator.domain.suppliers import Supplier
 from automator.services.ledger import LedgerRecord
 from automator.ui import main_window
 from automator.ui.main_window import MainWindow, _count_key, _count_pdfs, _history_row, _status_label
@@ -46,6 +48,8 @@ def window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[MainWind
     win._engine.stop()
     if win._ledger is not None:
         win._ledger.close()
+    if win._supplier_store is not None:
+        win._supplier_store.close()
     root.destroy()
 
 
@@ -69,13 +73,64 @@ def test_window_builds_and_switches_views(window: MainWindow) -> None:
 
 
 def test_society_rows_add_and_remove(window: MainWindow) -> None:
-    window._societies = [SocietyMapping(cuit="30111111118", name="EMPRESA UNA", folder=Path("/x/una"))]
+    window._societies = [SocietyMapping(cuit="30111111118", name="EMPRESA UNA")]
     window._refresh_societies_list()
     window.update_idletasks()
     assert window._societies_list.winfo_children()
     window._remove_society(0)
     window.update_idletasks()
     assert not window._societies
+
+
+def test_suppliers_search_lists_matches(window: MainWindow) -> None:
+    assert window._supplier_store is not None
+    assert window._registry_store is not None
+    window._supplier_store.bulk_upsert([Supplier(cuit="30999999995", razon_social="Distribuidora Nordica SA")])
+    window._registry_store.reload()
+    window._supplier_search_var.set("nord")
+    window._refresh_suppliers()
+    window.update_idletasks()
+    assert window._suppliers_list.winfo_children()
+
+
+def test_import_suppliers_updates_registry(window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert window._supplier_store is not None
+    assert window._registry_store is not None
+    path = tmp_path / "prov.xlsx"
+    workbook = Workbook()
+    workbook.active.append(["CUIT", "Razón Social"])
+    workbook.active.append(["30-99999999-5", "Nordica SA"])
+    workbook.save(path)
+    monkeypatch.setattr(main_window.filedialog, "askopenfilename", lambda **_kwargs: str(path))
+    monkeypatch.setattr(main_window, "ImportReportDialog", lambda *_args, **_kwargs: None)
+
+    window._import_suppliers()
+
+    assert window._supplier_store.count() == 1
+    assert len(window._registry_store.get()) == 1
+
+
+def test_import_societies_adds_to_list(window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "empresas.xlsx"
+    workbook = Workbook()
+    workbook.active.append(["CUIT", "Razón Social"])
+    workbook.active.append(["30-11111111-8", "Compradora Uno SA"])
+    workbook.save(path)
+    monkeypatch.setattr(main_window.filedialog, "askopenfilename", lambda **_kwargs: str(path))
+    monkeypatch.setattr(main_window, "ImportReportDialog", lambda *_args, **_kwargs: None)
+
+    window._import_societies()
+
+    assert [society.cuit for society in window._societies] == ["30111111118"]
+
+
+def test_advanced_config_starts_collapsed(window: MainWindow) -> None:
+    window._show("config")
+    window.update_idletasks()
+    assert window._advanced_body.winfo_manager() == ""
+    window._toggle_advanced()
+    window.update_idletasks()
+    assert window._advanced_body.winfo_manager() == "grid"
 
 
 def test_collect_config_roundtrips_widget_values(window: MainWindow, tmp_path: Path) -> None:
@@ -142,6 +197,18 @@ def test_restore_history_clears_ledger_without_touching_files(
     assert window._ledger.recent() == []
     assert not window._history_tree.get_children()
     assert pdf.exists()
+
+
+def test_restore_history_resets_session_counters(window: MainWindow, monkeypatch: pytest.MonkeyPatch) -> None:
+    window._increment("detected")
+    window._increment("archived")
+    assert window._counts["detected"] == 1
+    monkeypatch.setattr(main_window.messagebox, "askyesno", lambda *args, **kwargs: True)
+    monkeypatch.setattr(main_window.messagebox, "showinfo", lambda *args, **kwargs: None)
+
+    window._restore_history()
+
+    assert window._counts == {"detected": 0, "archived": 0, "review": 0, "error": 0}
 
 
 def test_dry_run_review_counts_as_review_not_archived() -> None:

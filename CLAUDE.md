@@ -7,8 +7,11 @@ on conflict, this file wins for anything project-specific.
 
 Automator (author: Brian Rey) is a desktop application that watches a downloads
 folder, reads each AFIP invoice PDF, detects the voucher type, number, supplier
-and buying company (by CUIT), and files the renamed PDF into the right folder.
-It is packaged as a Windows `.exe`.
+and buying company (by CUIT), and files the renamed PDF into the right folder
+(`base/{empresa}/{proveedor}`). Two categories drive filing: **companies**
+(buyers, in `config.json`) and an Excel-imported **supplier registry** (issuers,
+in SQLite) that canonicalizes the supplier name by matching the invoice text
+against known CUITs and aliases. It is packaged as a Windows `.exe`.
 
 ## Guiding principle
 
@@ -34,7 +37,8 @@ Standalone tools: `ruff check .`, `ruff format .`, `mypy`, `pytest`.
 Three layers, dependencies pointing inward (ui -> services -> domain):
 
 - `src/automator/domain/` - pure logic, no side effects, 100% testable (models,
-  parser, classification, naming). Never does IO.
+  parser, classification, naming, CUIT helpers, name normalization, and the
+  supplier registry/matching). Never does IO.
 - `src/automator/services/` - IO and orchestration: PDF reading, file operations,
   watcher, processing engine and ledger (history in SQLite).
 - `src/automator/ui/` - CustomTkinter interface. Contains no business rules.
@@ -52,7 +56,9 @@ every start ("generation") so an old worker never shares a queue with a new one.
 ### On-disk data
 
 - Config: `config.json` in the user's config directory (platformdirs).
-- History: `history.db` (SQLite) in the user's data directory.
+- History: `history.db` (SQLite) in the user's data directory. It also holds the
+  `suppliers` table (the Excel-imported registry), loaded into an immutable
+  in-memory `SupplierRegistry` snapshot the worker reads.
 - Logs: rotating `automator.log` in the user's log directory.
 
 Paths resolved in `config.py` (`config_path`, `ledger_path`, `log_dir`).

@@ -9,6 +9,7 @@ import pytest
 
 from automator.config import AppConfig
 from automator.domain.models import ProcessOutcome
+from automator.domain.suppliers import Supplier, SupplierRegistry
 from automator.services import engine as engine_module
 from automator.services.engine import EngineEvent, EngineEventType, ProcessingEngine
 from automator.services.ledger import Ledger
@@ -31,6 +32,22 @@ def test_process_now_returns_result_and_emits_event(
     assert result.outcome is ProcessOutcome.MOVED
     assert [event.type for event in events] == [EngineEventType.RESULT]
     assert events[0].result is result
+
+
+def test_process_now_canonicalizes_supplier_via_registry(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config()
+    source = dummy_pdf("factura.pdf")
+    registry = SupplierRegistry([Supplier(cuit="30999999995", razon_social="Proveedor Canonico SRL")])
+    engine = ProcessingEngine(
+        lambda: config, lambda _e: None, extractor=lambda _p: FACTURA_A_TEXT, registry_provider=lambda: registry
+    )
+
+    result = engine.process_now(source)
+
+    assert result.invoice is not None
+    assert result.invoice.supplier == "Proveedor Canonico SRL"
 
 
 def test_process_existing_enqueues_all_pdfs(
@@ -115,6 +132,27 @@ def test_copy_mode_does_not_reprocess_seen_source(
     events.clear()
     engine.process_existing()  # the rescan sees it again, but it must not be reprocessed
     assert not any(event.type is EngineEventType.DETECTED for event in events)
+    ledger.close()
+
+
+def test_duplicate_only_when_the_original_still_exists(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path], tmp_path: Path
+) -> None:
+    ledger = Ledger(tmp_path / "history.db")
+    config = make_config()
+    engine = ProcessingEngine(lambda: config, lambda _e: None, extractor=lambda _path: FACTURA_A_TEXT, ledger=ledger)
+
+    first = engine.process_now(dummy_pdf("f1.pdf"))
+    assert first.outcome is ProcessOutcome.MOVED
+    assert first.destination is not None
+
+    # Same invoice while the archived original is in place: a real duplicate.
+    assert engine.process_now(dummy_pdf("f2.pdf")).outcome is ProcessOutcome.DUPLICATE
+
+    # The archived original disappears (the user emptied the folder): the next copy must
+    # be filed, never diverted as a phantom duplicate of something that no longer exists.
+    first.destination.unlink()
+    assert engine.process_now(dummy_pdf("f3.pdf")).outcome is ProcessOutcome.MOVED
     ledger.close()
 
 

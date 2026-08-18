@@ -108,6 +108,22 @@ class Ledger:
             cursor = self._conn.execute(query, (identity, *(o.value for o in _ARCHIVED)))
             return cursor.fetchone() is not None
 
+    def archived_destination(self, identity: str) -> str | None:
+        """Destination of the most recent archived record for that identity, if any.
+
+        Used to confirm a suspected duplicate: if the recorded file is gone, it is not a
+        real duplicate and must be filed again rather than diverted to _DUPLICADOS.
+        """
+        placeholders = ", ".join("?" for _ in _ARCHIVED)
+        query = (
+            f"SELECT destination FROM records WHERE identity = ? AND reverted = 0"
+            f" AND destination IS NOT NULL AND outcome IN ({placeholders}) ORDER BY id DESC LIMIT 1"
+        )
+        with self._lock:
+            cursor = self._conn.execute(query, (identity, *(o.value for o in _ARCHIVED)))
+            row = cursor.fetchone()
+        return row["destination"] if row else None
+
     def recent(self, limit: int = 200) -> list[LedgerRecord]:
         with self._lock:
             cursor = self._conn.execute("SELECT * FROM records ORDER BY id DESC LIMIT ?", (limit,))

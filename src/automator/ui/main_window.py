@@ -22,9 +22,19 @@ from pydantic import ValidationError
 from automator import __version__
 from automator.config import AppConfig, ConfigStore, SocietyMapping, ledger_path, log_dir
 from automator.domain.models import ProcessOutcome, ProcessResult
+from automator.domain.suppliers import Supplier
 from automator.services import file_ops
 from automator.services.engine import EngineEvent, EngineEventType, ProcessingEngine
+from automator.services.excel_import import (
+    ExcelReadError,
+    MissingColumnError,
+    parse_societies,
+    parse_suppliers,
+    read_rows,
+)
 from automator.services.ledger import Ledger, LedgerRecord
+from automator.services.supplier_store import SupplierRegistryStore, SupplierStore
+from automator.ui.import_report_dialog import ImportReportDialog
 from automator.ui.onboarding import OnboardingDialog
 from automator.ui.society_dialog import SocietyDialog
 from automator.ui.system_utils import notify, open_folder
@@ -35,6 +45,7 @@ logger = logging.getLogger(__name__)
 _POLL_INTERVAL_MS = 150
 _PENDING_POLL_MS = 5000  # Re-reads the pending folders every 5s.
 _MAX_LOG_ROWS = 500
+_MAX_SUPPLIER_RESULTS = 20  # The search shows a bounded slice, never thousands of rows.
 _CUIT_LENGTH = 11
 
 # Icon glyphs: inherit the button text color and do not depend on assets.
@@ -84,7 +95,14 @@ class MainWindow(ctk.CTkFrame):
         self._first_run = first_run
         self._events: queue.Queue[EngineEvent] = queue.Queue()
         self._ledger = _open_ledger()
-        self._engine = ProcessingEngine(store.get, self._events.put, ledger=self._ledger)
+        self._supplier_store = _open_supplier_store()
+        self._registry_store = SupplierRegistryStore(self._supplier_store) if self._supplier_store is not None else None
+        self._engine = ProcessingEngine(
+            store.get,
+            self._events.put,
+            ledger=self._ledger,
+            registry_provider=self._registry_store.get if self._registry_store is not None else None,
+        )
         self._societies: list[SocietyMapping] = []
         self._counts = {"detected": 0, "archived": 0, "review": 0, "error": 0}
         self._last_pending = 0  # To notify only when the pending count grows.
@@ -134,6 +152,8 @@ class MainWindow(ctk.CTkFrame):
         self._state_var = tk.StringVar(value="Detenido")  # Short status for the sidebar pill.
         self._detail_var = tk.StringVar(value="Listo para empezar")  # Long detail for the header.
         self._pending_var = tk.StringVar()  # Number of files waiting for review.
+        self._supplier_count_var = tk.StringVar(value="0 proveedores")
+        self._supplier_search_var = tk.StringVar()
 
     # --- Reusable widget factories -----------------------------------------
 
@@ -526,6 +546,7 @@ class MainWindow(ctk.CTkFrame):
         if not messagebox.askyesno("Restaurar historial", _RESTORE_CONFIRM, icon="warning"):
             return
         self._ledger.clear()
+        self._reset_session_stats()
         self._refresh_history()
         messagebox.showinfo("Restaurar historial", "Historial vaciado. Los archivos siguen donde estaban.")
 
@@ -545,13 +566,14 @@ class MainWindow(ctk.CTkFrame):
         ctk.CTkLabel(self._config_view, text="Configuracion", font=self._f_h1, text_color=Palette.TEXT).grid(
             row=0, column=0, sticky="w", pady=(0, 4)
         )
-        self._hint(self._config_view, "Configura esto una vez. Los cambios se guardan con el boton de abajo.").grid(
+        self._hint(self._config_view, "Lo esencial aca. El resto esta en Avanzado.").grid(
             row=1, column=0, sticky="w", pady=(0, 18)
         )
         self._build_main_folders_card()
         self._build_societies_card()
+        self._build_suppliers_card()
         self._build_options_card()
-        self._build_advanced_folders_card()
+        self._build_advanced_card()
         self._build_config_actions()
 
     def _card(self, title: str, subtitle: str, row: int) -> ctk.CTkFrame:
@@ -559,26 +581,20 @@ class MainWindow(ctk.CTkFrame):
         card.grid(row=row, column=0, sticky="ew", pady=(0, 18))
         card.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(card, text=title, font=self._f_h2, text_color=Palette.TEXT).grid(
-            row=0, column=0, sticky="w", padx=20, pady=(16, 0)
+            row=0, column=0, sticky="w", padx=20, pady=(16, 8)
         )
-        self._hint(card, subtitle).grid(row=1, column=0, sticky="w", padx=20, pady=(2, 8))
+        if subtitle:
+            self._hint(card, subtitle).grid(row=1, column=0, sticky="w", padx=20, pady=(0, 8))
         body = ctk.CTkFrame(card, fg_color="transparent")
         body.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 18))
         body.grid_columnconfigure(0, weight=1)
         return body
 
-    def _folder_field(self, parent: tk.Misc, label: str, hint: str, var: tk.StringVar, row: int) -> None:
-        block = ctk.CTkFrame(parent, fg_color="transparent")
-        block.grid(row=row, column=0, sticky="ew", pady=(0, 12))
-        block.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(block, text=label, font=self._f_body, text_color=Palette.TEXT, anchor="w").grid(
-            row=0, column=0, columnspan=2, sticky="w"
-        )
-        ctk.CTkEntry(block, textvariable=var, height=38).grid(row=1, column=0, sticky="ew", pady=(4, 0))
-        ctk.CTkButton(
-            block,
-            text="Elegir carpeta...",
-            width=140,
+    def _path_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
+        return ctk.CTkButton(
+            parent,
+            text=text,
+            width=72,
             height=38,
             corner_radius=CORNER_RADIUS,
             fg_color=Palette.SURFACE_ALT,
@@ -586,38 +602,41 @@ class MainWindow(ctk.CTkFrame):
             text_color=Palette.TEXT,
             border_width=1,
             border_color=Palette.BORDER,
-            command=lambda: self._pick_folder(var),
-        ).grid(row=1, column=1, padx=(8, 0), pady=(4, 0))
-        self._hint(block, hint).grid(row=2, column=0, columnspan=2, sticky="w", pady=(3, 0))
+            command=command,
+        )
+
+    def _folder_field(self, parent: tk.Misc, label: str, var: tk.StringVar, row: int, hint: str = "") -> None:
+        block = ctk.CTkFrame(parent, fg_color="transparent")
+        block.grid(row=row, column=0, sticky="ew", pady=(0, 10))
+        block.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(block, text=label, font=self._f_body, text_color=Palette.TEXT, anchor="w").grid(
+            row=0, column=0, columnspan=3, sticky="w"
+        )
+        ctk.CTkEntry(block, textvariable=var, height=38).grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        self._path_button(block, "Elegir", lambda: self._pick_folder(var)).grid(
+            row=1, column=1, padx=(8, 0), pady=(4, 0)
+        )
+        self._path_button(block, "Abrir", lambda: open_folder(Path(var.get().strip() or "."))).grid(
+            row=1, column=2, padx=(6, 0), pady=(4, 0)
+        )
+        if hint:
+            self._hint(block, hint).grid(row=2, column=0, columnspan=3, sticky="w", pady=(3, 0))
 
     def _build_main_folders_card(self) -> None:
-        body = self._card("Carpetas principales", "Las dos carpetas que si o si tenes que elegir.", row=2)
-        self._folder_field(
-            body,
-            "Carpeta de entrada",
-            "Donde caen los PDF que descargas (por ejemplo, tu carpeta Descargas).",
-            self._input_var,
-            row=0,
-        )
-        self._folder_field(
-            body,
-            "Carpeta de salida",
-            "Donde se van a guardar las facturas ya ordenadas por empresa y proveedor.",
-            self._output_var,
-            row=1,
-        )
+        body = self._card("Carpetas", "", row=2)
+        self._folder_field(body, "Entrada", self._input_var, row=0)
+        self._folder_field(body, "Salida", self._output_var, row=1)
 
     def _build_societies_card(self) -> None:
-        body = self._card(
-            "Empresas (sociedades)",
-            "Cada factura se guarda en la carpeta de la empresa segun su CUIT. Agrega las tuyas aca.",
-            row=3,
-        )
+        body = self._card("Empresas", "Se archiva segun el CUIT de la compradora.", row=3)
         self._societies_list = ctk.CTkFrame(body, fg_color="transparent")
         self._societies_list.grid(row=0, column=0, sticky="ew")
         self._societies_list.grid_columnconfigure(0, weight=1)
+        buttons = ctk.CTkFrame(body, fg_color="transparent")
+        buttons.grid(row=1, column=0, sticky="ew", pady=(12, 0))
+        buttons.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkButton(
-            body,
+            buttons,
             text="+  Agregar empresa",
             height=40,
             corner_radius=CORNER_RADIUS,
@@ -626,7 +645,10 @@ class MainWindow(ctk.CTkFrame):
             hover_color=Palette.PRIMARY_HOVER,
             text_color="#ffffff",
             command=self._add_society,
-        ).grid(row=1, column=0, sticky="ew", pady=(12, 0))
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        import_button = self._path_button(buttons, "Importar Excel", self._import_societies)
+        import_button.configure(height=40)
+        import_button.grid(row=0, column=1, sticky="ew")
 
     def _refresh_societies_list(self) -> None:
         for child in self._societies_list.winfo_children():
@@ -646,9 +668,12 @@ class MainWindow(ctk.CTkFrame):
         info = ctk.CTkFrame(row, fg_color="transparent")
         info.grid(row=0, column=0, sticky="w", padx=14, pady=10)
         ctk.CTkLabel(info, text=society.name, font=self._f_h2, text_color=Palette.TEXT, anchor="w").pack(anchor="w")
+        subtitle = f"CUIT {_format_cuit(society.cuit)}"
+        if society.nombre_fantasia:
+            subtitle = f"{subtitle}   -   {society.nombre_fantasia}"
         ctk.CTkLabel(
             info,
-            text=f"CUIT {_format_cuit(society.cuit)}   -   {society.folder}",
+            text=subtitle,
             font=self._f_hint,
             text_color=Palette.MUTED,
             anchor="w",
@@ -674,99 +699,74 @@ class MainWindow(ctk.CTkFrame):
             command=command,
         )
 
-    def _build_options_card(self) -> None:
-        body = self._card("Opciones", "Valores comodos por defecto. Podes dejarlos como estan.", row=4)
-        ctk.CTkCheckBox(
-            body,
-            text="Modo de prueba (no mueve nada, solo muestra que haria)",
-            font=self._f_body,
-            variable=self._dry_run_var,
-        ).grid(row=0, column=0, sticky="w", pady=(0, 4))
-        self._hint(body, "Util la primera vez, para ver como clasifica sin tocar tus archivos.").grid(
-            row=1, column=0, sticky="w", pady=(0, 10)
+    def _checkbox(self, parent: tk.Misc, text: str, var: tk.BooleanVar, row: int) -> None:
+        ctk.CTkCheckBox(parent, text=text, font=self._f_body, variable=var).grid(
+            row=row, column=0, sticky="w", pady=(0, 8)
         )
-        ctk.CTkCheckBox(
-            body,
-            text="Copiar los archivos en vez de moverlos (deja los originales donde estan)",
-            font=self._f_body,
-            variable=self._copy_var,
-        ).grid(row=6, column=0, sticky="w", pady=(0, 4))
-        self._hint(
-            body,
-            "Al copiar, los PDF quedan en la carpeta de entrada. La app recuerda cuales ya "
-            "proceso para no volver a copiarlos.",
-        ).grid(row=7, column=0, sticky="w", pady=(0, 10))
-        ctk.CTkCheckBox(
-            body,
-            text="Esperar a que termine la descarga antes de procesar",
-            font=self._f_body,
-            variable=self._stability_var,
-        ).grid(row=2, column=0, sticky="w", pady=(0, 10))
-        timeout_row = ctk.CTkFrame(body, fg_color="transparent")
-        timeout_row.grid(row=3, column=0, sticky="w", pady=(0, 10))
-        ctk.CTkLabel(timeout_row, text="Espera maxima (segundos)", font=self._f_body, text_color=Palette.TEXT).pack(
+
+    def _build_options_card(self) -> None:
+        body = self._card("Comportamiento", "", row=5)
+        self._checkbox(body, "Simular (no mueve archivos)", self._dry_run_var, row=0)
+        self._checkbox(body, "Copiar en vez de mover", self._copy_var, row=1)
+        self._checkbox(body, "Notificar cuando hay pendientes", self._notify_var, row=2)
+
+    def _build_advanced_card(self) -> None:
+        wrap = ctk.CTkFrame(self._config_view, fg_color="transparent")
+        wrap.grid(row=6, column=0, sticky="ew", pady=(0, 8))
+        wrap.grid_columnconfigure(0, weight=1)
+        self._advanced_open = False
+        self._advanced_btn = self._ghost_button(wrap, "Avanzado  ▸", self._toggle_advanced)
+        self._advanced_btn.grid(row=0, column=0, sticky="w")
+        self._advanced_body = ctk.CTkFrame(wrap, fg_color=Palette.SURFACE, corner_radius=CORNER_RADIUS)
+        self._advanced_body.grid(row=1, column=0, sticky="ew", pady=(10, 0))
+        self._advanced_body.grid_columnconfigure(0, weight=1)
+        self._advanced_body.grid_remove()
+        self._fill_advanced_body()
+
+    def _fill_advanced_body(self) -> None:
+        body = ctk.CTkFrame(self._advanced_body, fg_color="transparent")
+        body.grid(row=0, column=0, sticky="ew", padx=20, pady=16)
+        body.grid_columnconfigure(0, weight=1)
+        self._checkbox(body, "Esperar a que termine la descarga", self._stability_var, row=0)
+        timeout = ctk.CTkFrame(body, fg_color="transparent")
+        timeout.grid(row=1, column=0, sticky="w", pady=(0, 12))
+        ctk.CTkLabel(timeout, text="Espera maxima (segundos)", font=self._f_body, text_color=Palette.TEXT).pack(
             side="left", padx=(0, 10)
         )
-        ctk.CTkEntry(timeout_row, textvariable=self._timeout_var, width=80, height=36).pack(side="left")
-        ctk.CTkCheckBox(
-            body,
-            text="Avisar con una notificacion cuando algo necesita revision",
-            font=self._f_body,
-            variable=self._notify_var,
-        ).grid(row=4, column=0, sticky="w", pady=(0, 10))
-        template_block = ctk.CTkFrame(body, fg_color="transparent")
-        template_block.grid(row=5, column=0, sticky="ew")
-        template_block.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(
-            template_block, text="Estructura de carpetas", font=self._f_body, text_color=Palette.TEXT, anchor="w"
-        ).grid(row=0, column=0, sticky="w")
-        ctk.CTkEntry(template_block, textvariable=self._template_var, height=36).grid(
-            row=1, column=0, sticky="ew", pady=(4, 0)
-        )
-        self._hint(
-            template_block,
-            "Dentro de la carpeta de cada empresa. Tokens: {supplier} {year} {month} {day}. "
-            "Ej: {year}/{month}/{supplier} archiva por ano y mes.",
-        ).grid(row=2, column=0, sticky="w", pady=(3, 0))
+        ctk.CTkEntry(timeout, textvariable=self._timeout_var, width=80, height=36).pack(side="left")
+        self._template_field(body, row=2)
+        self._folder_field(body, "Sin clasificar", self._unknown_var, row=3)
+        self._folder_field(body, "Cuarentena", self._quarantine_var, row=4)
+        self._folder_field(body, "Ordenes de compra", self._orders_var, row=5)
+        logs = self._ghost_button(body, "Abrir carpeta de logs", self._open_logs)
+        logs.grid(row=6, column=0, sticky="w", pady=(8, 0))
 
-    def _build_advanced_folders_card(self) -> None:
-        body = self._card(
-            "Carpetas automaticas (avanzado)",
-            "Se crean solas. Cambialas solo si sabes lo que haces.",
-            row=5,
+    def _template_field(self, parent: tk.Misc, row: int) -> None:
+        block = ctk.CTkFrame(parent, fg_color="transparent")
+        block.grid(row=row, column=0, sticky="ew", pady=(0, 12))
+        block.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(block, text="Estructura de carpetas", font=self._f_body, text_color=Palette.TEXT).grid(
+            row=0, column=0, sticky="w"
         )
-        self._folder_field(
-            body,
-            "Facturas sin clasificar",
-            "Para facturas de un CUIT que no configuraste.",
-            self._unknown_var,
-            row=0,
+        ctk.CTkEntry(block, textvariable=self._template_var, height=36).grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        self._hint(block, "{supplier} {year} {month} {day}. Ej: {year}/{month}/{supplier}").grid(
+            row=2, column=0, sticky="w", pady=(3, 0)
         )
-        self._folder_field(
-            body,
-            "Cuarentena",
-            "Para PDF ilegibles o con errores, que no se pudieron archivar.",
-            self._quarantine_var,
-            row=1,
-        )
-        self._folder_field(
-            body,
-            "Ordenes de compra",
-            "Las OC se guardan aca, separadas de las facturas, por empresa y proveedor.",
-            self._orders_var,
-            row=2,
-        )
+
+    def _toggle_advanced(self) -> None:
+        self._advanced_open = not self._advanced_open
+        if self._advanced_open:
+            self._advanced_body.grid()
+            self._advanced_btn.configure(text="Avanzado  ▾")
+            return
+        self._advanced_body.grid_remove()
+        self._advanced_btn.configure(text="Avanzado  ▸")
 
     def _build_config_actions(self) -> None:
         bar = ctk.CTkFrame(self._config_view, fg_color="transparent")
-        bar.grid(row=6, column=0, sticky="ew", pady=(4, 24))
+        bar.grid(row=7, column=0, sticky="ew", pady=(4, 24))
         bar.grid_columnconfigure(0, weight=1)
-        left = ctk.CTkFrame(bar, fg_color="transparent")
-        left.grid(row=0, column=0, sticky="w")
-        self._ghost_button(left, "Abrir carpeta de entrada", self._open_input).pack(side="left", padx=(0, 10))
-        self._ghost_button(left, "Abrir carpeta de salida", self._open_output).pack(side="left", padx=(0, 10))
-        self._ghost_button(left, "Abrir carpeta de logs", self._open_logs).pack(side="left")
-        self._primary_button(bar, "Guardar configuracion", self._save_config).grid(row=0, column=1, sticky="e")
+        self._primary_button(bar, "Guardar", self._save_config).grid(row=0, column=0, sticky="e")
 
     # --- Configuration loading and collection -------------------------------
 
@@ -842,6 +842,116 @@ class MainWindow(ctk.CTkFrame):
     def _remove_society(self, index: int) -> None:
         del self._societies[index]
         self._refresh_societies_list()
+
+    # --- Suppliers registry -------------------------------------------------
+
+    def _build_suppliers_card(self) -> None:
+        body = self._card("Proveedores", "Se importan por Excel y ordenan cada factura por emisor.", row=4)
+        header = ctk.CTkFrame(body, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew")
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(header, textvariable=self._supplier_count_var, font=self._f_body, text_color=Palette.TEXT).grid(
+            row=0, column=0, sticky="w"
+        )
+        self._path_button(header, "Importar Excel", self._import_suppliers).grid(row=0, column=1, padx=(6, 0))
+        self._path_button(header, "Vaciar", self._clear_suppliers).grid(row=0, column=2, padx=(6, 0))
+        search = ctk.CTkEntry(
+            body, textvariable=self._supplier_search_var, height=38, placeholder_text="Buscar proveedor..."
+        )
+        search.grid(row=1, column=0, sticky="ew", pady=(12, 8))
+        search.bind("<KeyRelease>", lambda _event: self._refresh_suppliers())
+        self._suppliers_list = ctk.CTkFrame(body, fg_color="transparent")
+        self._suppliers_list.grid(row=2, column=0, sticky="ew")
+        self._suppliers_list.grid_columnconfigure(0, weight=1)
+        self._refresh_suppliers()
+
+    def _refresh_suppliers(self) -> None:
+        for child in self._suppliers_list.winfo_children():
+            child.destroy()
+        if self._registry_store is None or self._supplier_store is None:
+            return
+        self._supplier_count_var.set(f"{self._supplier_store.count()} proveedores")
+        query = self._supplier_search_var.get().strip()
+        results = self._registry_store.get().search(query, limit=_MAX_SUPPLIER_RESULTS)
+        for index, supplier in enumerate(results):
+            self._build_supplier_row(index, supplier)
+
+    def _build_supplier_row(self, index: int, supplier: Supplier) -> None:
+        row = ctk.CTkFrame(self._suppliers_list, fg_color=Palette.SURFACE_ALT, corner_radius=CORNER_RADIUS)
+        row.grid(row=index, column=0, sticky="ew", pady=(0, 6))
+        row.grid_columnconfigure(0, weight=1)
+        info = ctk.CTkFrame(row, fg_color="transparent")
+        info.grid(row=0, column=0, sticky="w", padx=12, pady=8)
+        ctk.CTkLabel(info, text=supplier.razon_social, font=self._f_body, text_color=Palette.TEXT, anchor="w").pack(
+            anchor="w"
+        )
+        ctk.CTkLabel(
+            info, text=f"CUIT {_format_cuit(supplier.cuit)}", font=self._f_hint, text_color=Palette.MUTED, anchor="w"
+        ).pack(anchor="w")
+        self._row_button(row, "Eliminar", Palette.ERROR, lambda: self._remove_supplier(supplier.cuit)).grid(
+            row=0, column=1, sticky="e", padx=(0, 10)
+        )
+
+    def _remove_supplier(self, cuit: str) -> None:
+        if self._supplier_store is None or self._registry_store is None:
+            return
+        self._supplier_store.delete(cuit)
+        self._registry_store.reload()
+        self._refresh_suppliers()
+
+    def _import_suppliers(self) -> None:
+        if self._supplier_store is None or self._registry_store is None:
+            messagebox.showerror("Proveedores", "El registro de proveedores no esta disponible.")
+            return
+        rows = self._read_excel()
+        if rows is None:
+            return
+        try:
+            report = parse_suppliers(rows)
+        except MissingColumnError as exc:
+            messagebox.showerror("Excel invalido", str(exc))
+            return
+        created, updated = self._supplier_store.bulk_upsert(report.created)
+        self._registry_store.reload()
+        self._refresh_suppliers()
+        summary = f"{created} nuevos, {updated} actualizados, {len(report.invalid)} con errores."
+        ImportReportDialog(self, "Importar proveedores", summary, report.invalid)
+
+    def _import_societies(self) -> None:
+        rows = self._read_excel()
+        if rows is None:
+            return
+        try:
+            report = parse_societies(rows)
+        except MissingColumnError as exc:
+            messagebox.showerror("Excel invalido", str(exc))
+            return
+        merged = {society.cuit: society for society in self._societies}
+        merged.update({society.cuit: society for society in report.created})
+        self._societies = list(merged.values())
+        self._refresh_societies_list()
+        summary = f"{len(report.created)} empresas importadas, {len(report.invalid)} con errores. Recorda guardar."
+        ImportReportDialog(self, "Importar empresas", summary, report.invalid)
+
+    def _clear_suppliers(self) -> None:
+        if self._supplier_store is None or self._registry_store is None:
+            return
+        if not messagebox.askyesno("Vaciar proveedores", "Se borra todo el registro de proveedores. Continuar?"):
+            return
+        self._supplier_store.clear()
+        self._registry_store.reload()
+        self._refresh_suppliers()
+
+    def _read_excel(self) -> list[dict[str, str]] | None:
+        path = filedialog.askopenfilename(title="Elegi el Excel", filetypes=[("Excel", "*.xlsx")])
+        if not path:
+            return None
+        try:
+            return read_rows(Path(path))
+        except ExcelReadError as exc:
+            logger.exception("No se pudo leer el Excel %s", path)
+            messagebox.showerror("Error al leer", f"No se pudo leer el Excel: {exc}")
+            return None
 
     # --- Engine control -----------------------------------------------------
 
@@ -1032,6 +1142,8 @@ class MainWindow(ctk.CTkFrame):
         self._engine.stop()
         if self._ledger is not None:
             self._ledger.close()
+        if self._supplier_store is not None:
+            self._supplier_store.close()
         self.winfo_toplevel().destroy()
 
 
@@ -1096,4 +1208,13 @@ def _open_ledger() -> Ledger | None:
         return Ledger(ledger_path())
     except (OSError, sqlite3.Error):
         logger.exception("No se pudo abrir el historial; se continua sin el")
+        return None
+
+
+def _open_supplier_store() -> SupplierStore | None:
+    # If the store cannot be opened, the app still works (no supplier canonicalization).
+    try:
+        return SupplierStore(ledger_path())
+    except (OSError, sqlite3.Error):
+        logger.exception("No se pudo abrir el registro de proveedores; se continua sin el")
         return None

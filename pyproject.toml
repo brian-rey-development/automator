@@ -20,6 +20,7 @@ dependencies = [
     "pydantic>=2.6",
     "platformdirs>=4.2",
     "customtkinter>=5.2",
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -88,7 +89,7 @@ files = ["src/automator"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["watchdog.*", "pypdf.*", "customtkinter.*"]
+module = ["watchdog.*", "pypdf.*", "customtkinter.*", "openpyxl.*"]
 ignore_missing_imports = true
 
 # CustomTkinter no publica stubs; se permite heredar de sus clases en la capa de UI.

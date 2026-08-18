@@ -26,7 +26,6 @@ class OnboardingDialog(ctk.CTkToplevel):
         self._output = tk.StringVar(value=str(base.base_output_folder))
         self._cuit = tk.StringVar()
         self._name = tk.StringVar()
-        self._folder = tk.StringVar()
 
         self.title("Bienvenido a Automator")
         self.configure(fg_color=Palette.BG)
@@ -55,10 +54,9 @@ class OnboardingDialog(ctk.CTkToplevel):
         )
         self._entry_row(card, "CUIT", self._cuit, row=5)
         self._entry_row(card, "Razon social", self._name, row=6)
-        self._folder_row(card, "Carpeta de la empresa", self._folder, row=7)
         self._error = ctk.CTkLabel(card, text="", text_color=Palette.ERROR, wraplength=460, justify="left")
-        self._error.grid(row=8, column=0, sticky="w", padx=20, pady=(6, 0))
-        self._buttons(card, row=9)
+        self._error.grid(row=7, column=0, sticky="w", padx=20, pady=(6, 0))
+        self._buttons(card, row=8)
 
     def _entry_row(self, parent: ctk.CTkFrame, label: str, var: tk.StringVar, row: int) -> None:
         frame = ctk.CTkFrame(parent, fg_color="transparent")
@@ -115,11 +113,10 @@ class OnboardingDialog(ctk.CTkToplevel):
         )
 
     def _collect_society(self) -> tuple[SocietyMapping, ...]:
-        values = (self._cuit.get().strip(), self._name.get().strip(), self._folder.get().strip())
-        if not any(values):
+        cuit, name = self._cuit.get().strip(), self._name.get().strip()
+        if not cuit and not name:
             return ()
-        cuit, name, folder = values
-        return (SocietyMapping(cuit=cuit, name=name, folder=Path(folder)),)
+        return (SocietyMapping(cuit=cuit, name=name),)
 
     def _make_modal(self, master: tk.Misc) -> None:
         self.transient(master.winfo_toplevel())

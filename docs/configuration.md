@@ -26,11 +26,22 @@ From the app: Configuration -> "Open logs folder".
 List of buyer companies. Each one has:
 
 - **CUIT**: 11 digits (hyphens and dots are accepted, normalized automatically).
-- **Company name**: visible name, cannot be empty.
-- **Folder**: absolute path where its invoices are filed.
+- **Company name** (Razon Social): visible name, cannot be empty.
+- **Trade name** (Nombre de Fantasia) and **aliases**: optional, used to match
+  the buyer by name when the CUIT is not present.
 
-They are added, edited and removed from the interface. The app starts with no
-company: you define your own.
+The destination folder is not chosen by hand: it is `base/{Razon Social}`. They
+are added, edited and removed from the interface, or imported from Excel. The app
+starts with no company: you define your own.
+
+### Suppliers
+
+Registry of invoice issuers, imported from Excel and stored in `history.db`
+(SQLite). Each supplier has a CUIT, legal name, optional trade name and alias
+variants. When a known supplier is found in an invoice (by CUIT or name), its
+legal name canonicalizes the filing so every variant lands in one folder. The
+registry is searched from the interface and can be cleared. It is optional: with
+no registry, filing falls back to the label read from the PDF.
 
 ### Options
 
@@ -75,8 +86,8 @@ An invalid token is rejected on save.
 
 - The output folders cannot be inside the input folder (this avoids a
   reprocessing loop).
-- CUITs cannot be repeated across companies.
-- Company paths must be absolute.
+- CUITs cannot be repeated across companies, and every CUIT (companies and
+  suppliers) must pass the AFIP check digit.
 
 If something does not validate, the interface reports it and does not save until
 it is fixed.

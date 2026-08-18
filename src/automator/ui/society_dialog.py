@@ -1,15 +1,16 @@
-"""Modern modal dialog to create or edit a society."""
+"""Modern modal dialog to create or edit a society (buying company)."""
 
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import filedialog
 
 import customtkinter as ctk
 from pydantic import ValidationError
 
 from automator.config import SocietyMapping
 from automator.ui.theme import CORNER_RADIUS, Palette
+
+_ALIAS_SEPARATOR = ","
 
 
 class SocietyDialog(ctk.CTkToplevel):
@@ -20,9 +21,10 @@ class SocietyDialog(ctk.CTkToplevel):
         self.result: SocietyMapping | None = None
         self._cuit = tk.StringVar(value=existing.cuit if existing else "")
         self._name = tk.StringVar(value=existing.name if existing else "")
-        self._folder = tk.StringVar(value=str(existing.folder) if existing else "")
+        self._fantasia = tk.StringVar(value=existing.nombre_fantasia if existing and existing.nombre_fantasia else "")
+        self._aliases = tk.StringVar(value=_ALIAS_SEPARATOR.join(existing.aliases) if existing else "")
 
-        self.title("Editar sociedad" if existing else "Nueva sociedad")
+        self.title("Editar empresa" if existing else "Nueva empresa")
         self.configure(fg_color=Palette.BG)
         self.resizable(False, False)
         self._build_form()
@@ -35,31 +37,23 @@ class SocietyDialog(ctk.CTkToplevel):
 
         self._field(container, "CUIT (11 digitos)", self._cuit, row=0)
         self._field(container, "Razon social", self._name, row=1)
-        self._folder_field(container, row=2)
+        self._field(container, "Nombre de fantasia (opcional)", self._fantasia, row=2)
+        self._field(container, "Alias, separados por coma (opcional)", self._aliases, row=3)
         self._error = ctk.CTkLabel(container, text="", text_color=Palette.ERROR, anchor="w")
-        self._error.grid(row=3, column=0, columnspan=3, sticky="ew", padx=16, pady=(4, 0))
-        self._buttons(container, row=4)
+        self._error.grid(row=4, column=0, columnspan=2, sticky="ew", padx=16, pady=(4, 0))
+        self._buttons(container, row=5)
 
     def _field(self, parent: ctk.CTkFrame, label: str, var: tk.StringVar, row: int) -> None:
         ctk.CTkLabel(parent, text=label, text_color=Palette.MUTED).grid(
             row=row, column=0, sticky="w", padx=16, pady=(16 if row == 0 else 8, 0)
         )
         ctk.CTkEntry(parent, textvariable=var, width=320).grid(
-            row=row, column=1, columnspan=2, sticky="ew", padx=16, pady=(16 if row == 0 else 8, 0)
-        )
-
-    def _folder_field(self, parent: ctk.CTkFrame, row: int) -> None:
-        ctk.CTkLabel(parent, text="Carpeta de proveedores", text_color=Palette.MUTED).grid(
-            row=row, column=0, sticky="w", padx=16, pady=(8, 0)
-        )
-        ctk.CTkEntry(parent, textvariable=self._folder).grid(row=row, column=1, sticky="ew", padx=(16, 8), pady=(8, 0))
-        ctk.CTkButton(parent, text="Elegir", width=80, command=self._pick_folder).grid(
-            row=row, column=2, padx=(0, 16), pady=(8, 0)
+            row=row, column=1, sticky="ew", padx=16, pady=(16 if row == 0 else 8, 0)
         )
 
     def _buttons(self, parent: ctk.CTkFrame, row: int) -> None:
         bar = ctk.CTkFrame(parent, fg_color="transparent")
-        bar.grid(row=row, column=0, columnspan=3, sticky="e", padx=16, pady=16)
+        bar.grid(row=row, column=0, columnspan=2, sticky="e", padx=16, pady=16)
         ctk.CTkButton(
             bar, text="Cancelar", width=100, fg_color=Palette.MUTED, hover_color=Palette.TEXT, command=self.destroy
         ).pack(side="left", padx=(0, 8))
@@ -72,17 +66,13 @@ class SocietyDialog(ctk.CTkToplevel):
             command=self._save,
         ).pack(side="left")
 
-    def _pick_folder(self) -> None:
-        chosen = filedialog.askdirectory(parent=self, title="Carpeta de proveedores")
-        if chosen:
-            self._folder.set(chosen)
-
     def _save(self) -> None:
         try:
             self.result = SocietyMapping(
                 cuit=self._cuit.get().strip(),
                 name=self._name.get().strip(),
-                folder=self._folder.get().strip(),
+                nombre_fantasia=self._fantasia.get().strip() or None,
+                aliases=_parse_aliases(self._aliases.get()),
             )
         except ValidationError as exc:
             self._error.configure(text=_first_error(exc))
@@ -97,6 +87,10 @@ class SocietyDialog(ctk.CTkToplevel):
         self.wait_visibility()
         self.grab_set()
         self.focus_set()
+
+
+def _parse_aliases(raw: str) -> tuple[str, ...]:
+    return tuple(alias.strip() for alias in raw.split(_ALIAS_SEPARATOR) if alias.strip())
 
 
 def _first_error(exc: ValidationError) -> str:
