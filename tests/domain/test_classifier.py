@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from automator.domain.classifier import destination_dir
+from automator.domain.filing import destination_dir
 from automator.domain.models import ParsedInvoice, Voucher, VoucherKind
 
 
@@ -44,3 +44,9 @@ def test_template_falls_back_when_date_missing() -> None:
     base = Path("/salida/EMPRESA")
     result = destination_dir(_invoice("ACME S.A."), base, "{year}/{supplier}")
     assert result == base / "sin_fecha" / "ACME S.A"
+
+
+def test_unknown_template_token_does_not_raise() -> None:
+    base = Path("/salida/EMPRESA")
+    result = destination_dir(_invoice("ACME S.A."), base, "{supplier}/{unknown}")
+    assert result == base / "ACME S.A"

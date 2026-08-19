@@ -80,7 +80,7 @@ class Ledger:
     def record(self, result: ProcessResult, timestamp: str | None = None) -> None:
         identity = result.invoice.identity if result.invoice else None
         supplier = result.invoice.supplier if result.invoice else None
-        voucher = result.invoice.voucher.label if result.invoice else None
+        voucher = result.invoice.type_label if result.invoice else None
         destination = str(result.destination) if result.destination else None
         row = (
             timestamp or datetime.now().isoformat(timespec="seconds"),
