@@ -109,7 +109,7 @@ class ConfigStore:
     def update(self, config: AppConfig) -> None:
         with self._lock:
             save_config(config, self._path)
-            self._config = config
+            self._config = config  # Disk first: a failed save must not change memory.
 
 
 def load_store(path: Path | None = None) -> ConfigStore:

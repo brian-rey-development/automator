@@ -176,15 +176,17 @@ def test_review_folder_is_under_output() -> None:
     assert config.review_folder in config.all_folders()
 
 
-def test_unreadable_config_file_is_preserved(tmp_path: Path) -> None:
+def test_unreadable_config_file_is_preserved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "config.json"
     original = default_config().model_dump_json()
     path.write_text(original, encoding="utf-8")
-    path.chmod(0)
-    try:
-        loaded = load_config(path)
-    finally:
-        path.chmod(0o644)
+
+    def boom(self: Path, *args: object, **kwargs: object) -> str:
+        raise OSError("locked")
+
+    monkeypatch.setattr(Path, "read_text", boom)
+    loaded = load_config(path)
+    monkeypatch.undo()
     assert loaded == default_config()
     assert path.read_text(encoding="utf-8") == original
     assert list(tmp_path.glob("config.json.*.corrupt")) == []

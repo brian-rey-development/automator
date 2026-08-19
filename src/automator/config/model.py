@@ -18,7 +18,6 @@ _ORDERS_NO_SOCIETY = "_SIN_SOCIEDAD"
 
 
 def _is_within(child: Path, parent: Path) -> bool:
-    """True if child equals parent or is nested inside parent."""
     try:
         child.relative_to(parent)
         return True
@@ -64,8 +63,6 @@ class SocietyMapping(BaseModel):
 
 
 class AppConfig(BaseModel):
-    """Full application configuration."""
-
     model_config = ConfigDict(frozen=True)
 
     input_folder: Path
