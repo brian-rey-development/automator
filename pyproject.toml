@@ -84,7 +84,6 @@ max-branches = 8
 "tests/**" = ["PLR2004", "PLR0915"]
 "scripts/**" = ["PLR2004", "PLR0913", "PLR0917"]
 "src/automator/ui/**" = ["PLR0915", "C901", "PLR0911", "PLR0912", "PLR0913", "PLR0917"]
-"src/automator/services/engine.py" = ["PLR0915", "C901", "PLR0911", "PLR0912"]
 "src/automator/services/processor.py" = ["PLR0915", "C901", "PLR0911", "PLR0912"]
 "src/automator/domain/parser.py" = ["PLR0915", "C901", "PLR0911", "PLR0912"]
 
