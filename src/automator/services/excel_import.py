@@ -26,8 +26,8 @@ T = TypeVar("T")
 _NON_ALNUM = re.compile(r"[^a-z0-9]")
 _HEADER_ALIASES: dict[str, tuple[str, ...]] = {
     "cuit": ("cuit", "cuitcuil", "cuil"),
-    "razon_social": ("razonsocial", "razon"),
-    "nombre_fantasia": ("nombredefantasia", "nombrefantasia", "fantasia"),
+    "legal_name": ("razonsocial", "razon", "legalname"),
+    "trade_name": ("nombredefantasia", "nombrefantasia", "fantasia", "tradename"),
 }
 _ALIAS_MARKERS = ("alias", "variant", "variacion")
 _FIRST_DATA_ROW = 2  # Row 1 is the header; spreadsheet rows are 1-based.
@@ -52,8 +52,8 @@ class ImportReport(Generic[T]):
 @dataclass(frozen=True)
 class _Fields:
     cuit: str
-    razon_social: str
-    nombre_fantasia: str | None
+    legal_name: str
+    trade_name: str | None
     aliases: tuple[str, ...]
 
 
@@ -111,18 +111,18 @@ def _parse(
 def _columns(rows: list[dict[str, str]]) -> tuple[dict[str, str], list[str]]:
     headers = list(dict.fromkeys(key for row in rows for key in row))
     columns = map_columns(headers)
-    if "cuit" not in columns or "razon_social" not in columns:
+    if "cuit" not in columns or "legal_name" not in columns:
         raise MissingColumnError("El Excel debe tener columnas de CUIT y Razon Social.")
     return columns, _alias_headers(headers)
 
 
 def _extract(row: dict[str, str], columns: dict[str, str], alias_headers: list[str]) -> _Fields:
-    fantasia = row.get(columns["nombre_fantasia"], "").strip() if "nombre_fantasia" in columns else ""
+    fantasia = row.get(columns["trade_name"], "").strip() if "trade_name" in columns else ""
     aliases = tuple(alias for header in alias_headers if (alias := row.get(header, "").strip()))
     return _Fields(
         cuit=row.get(columns["cuit"], "").strip(),
-        razon_social=row.get(columns["razon_social"], "").strip(),
-        nombre_fantasia=fantasia or None,
+        legal_name=row.get(columns["legal_name"], "").strip(),
+        trade_name=fantasia or None,
         aliases=aliases,
     )
 
@@ -130,8 +130,8 @@ def _extract(row: dict[str, str], columns: dict[str, str], alias_headers: list[s
 def _build_supplier(fields: _Fields) -> Supplier:
     return Supplier(
         cuit=fields.cuit,
-        razon_social=fields.razon_social,
-        nombre_fantasia=fields.nombre_fantasia,
+        legal_name=fields.legal_name,
+        trade_name=fields.trade_name,
         extra_aliases=fields.aliases,
     )
 
@@ -139,8 +139,8 @@ def _build_supplier(fields: _Fields) -> Supplier:
 def _build_society(fields: _Fields) -> SocietyMapping:
     return SocietyMapping(
         cuit=fields.cuit,
-        name=fields.razon_social,
-        nombre_fantasia=fields.nombre_fantasia,
+        name=fields.legal_name,
+        trade_name=fields.trade_name,
         aliases=fields.aliases,
     )
 
@@ -153,7 +153,7 @@ def _merge_supplier(created: dict[str, Supplier], supplier: Supplier) -> None:
     created[supplier.cuit] = existing.model_copy(
         update={
             "extra_aliases": _dedupe(existing.extra_aliases, supplier.extra_aliases),
-            "nombre_fantasia": existing.nombre_fantasia or supplier.nombre_fantasia,
+            "trade_name": existing.trade_name or supplier.trade_name,
         }
     )
 
@@ -166,7 +166,7 @@ def _merge_society(created: dict[str, SocietyMapping], society: SocietyMapping) 
     created[society.cuit] = existing.model_copy(
         update={
             "aliases": _dedupe(existing.aliases, society.aliases),
-            "nombre_fantasia": existing.nombre_fantasia or society.nombre_fantasia,
+            "trade_name": existing.trade_name or society.trade_name,
         }
     )
 

@@ -18,8 +18,8 @@ def store(tmp_path: Path) -> Iterator[SupplierStore]:
     instance.close()
 
 
-def _supplier(cuit: str, razon_social: str, **extra: object) -> Supplier:
-    return Supplier(cuit=cuit, razon_social=razon_social, **extra)  # type: ignore[arg-type]
+def _supplier(cuit: str, legal_name: str, **extra: object) -> Supplier:
+    return Supplier(cuit=cuit, legal_name=legal_name, **extra)
 
 
 def test_bulk_upsert_creates_and_counts(store: SupplierStore) -> None:
@@ -34,14 +34,14 @@ def test_bulk_upsert_updates_and_merges_aliases(store: SupplierStore) -> None:
     assert (created, updated) == (0, 1)
     stored = store.all()[0]
     assert set(stored.extra_aliases) == {"x", "y"}
-    assert stored.razon_social == "A2"
+    assert stored.legal_name == "A2"
 
 
 def test_all_roundtrips_every_field(store: SupplierStore) -> None:
-    store.bulk_upsert([_supplier("30999999995", "Nordica SA", nombre_fantasia="Nord", extra_aliases=("La Nordica",))])
+    store.bulk_upsert([_supplier("30999999995", "Nordica SA", trade_name="Nord", extra_aliases=("La Nordica",))])
     stored = store.all()[0]
-    assert stored.razon_social == "Nordica SA"
-    assert stored.nombre_fantasia == "Nord"
+    assert stored.legal_name == "Nordica SA"
+    assert stored.trade_name == "Nord"
     assert stored.extra_aliases == ("La Nordica",)
 
 

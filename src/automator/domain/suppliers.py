@@ -1,10 +1,4 @@
-"""Supplier registry: identify the invoice issuer by CUIT (or name) and canonicalize it.
-
-The registry is the source of truth. Instead of trusting a fragile "Razon Social:"
-label on the PDF, we look for a known supplier's identifiers inside the invoice text.
-The CUIT is the strong signal (O(1) index lookup); the normalized name is a
-best-effort fallback. Matching never guesses: two candidate suppliers -> no match.
-"""
+"""Issuer registry. Match never guesses: 0 or 2+ hits means no match."""
 
 from __future__ import annotations
 
@@ -18,13 +12,11 @@ _MIN_TEXT_ALIAS = 5
 
 
 class Supplier(BaseModel):
-    """A known invoice issuer: CUIT (match key), legal name and optional aliases."""
-
     model_config = ConfigDict(frozen=True)
 
     cuit: str
-    razon_social: str
-    nombre_fantasia: str | None = None
+    legal_name: str
+    trade_name: str | None = None
     extra_aliases: tuple[str, ...] = ()
 
     @field_validator("cuit")
@@ -37,16 +29,15 @@ class Supplier(BaseModel):
             raise ValueError(f"El CUIT no es valido (digito verificador incorrecto): '{value}'")
         return digits
 
-    @field_validator("razon_social")
+    @field_validator("legal_name")
     @classmethod
-    def _razon_social_not_empty(cls, value: str) -> str:
+    def _legal_name_not_empty(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("La razon social no puede estar vacia.")
         return value.strip()
 
     def aliases(self) -> frozenset[str]:
-        """Normalized set of every name this supplier may be recognized by."""
-        raw = (self.razon_social, self.nombre_fantasia, *self.extra_aliases)
+        raw = (self.legal_name, self.trade_name, *self.extra_aliases)
         return frozenset(normalize_name(name) for name in raw if name and normalize_name(name))
 
 
@@ -74,13 +65,10 @@ class SupplierRegistry:
             return by_cuit
         return self._match_text(text)
 
-    def canonical_name(self, supplier: Supplier) -> str:
-        return supplier.razon_social
-
     def search(self, query: str, limit: int) -> list[Supplier]:
         needle = normalize_name(query)
         matches = [s for s in self._suppliers if any(needle in alias for alias in s.aliases())]
-        return sorted(matches, key=lambda s: s.razon_social)[:limit]
+        return sorted(matches, key=lambda s: s.legal_name)[:limit]
 
     def _match_cuit(self, text: str, exclude_cuits: set[str]) -> Supplier | None:
         candidates: set[Supplier] = set()

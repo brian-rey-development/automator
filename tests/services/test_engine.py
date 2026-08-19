@@ -66,7 +66,7 @@ def test_process_now_canonicalizes_supplier_via_registry(
 ) -> None:
     config = make_config()
     source = dummy_pdf("factura.pdf")
-    registry = SupplierRegistry([Supplier(cuit="30999999995", razon_social="Proveedor Canonico SRL")])
+    registry = SupplierRegistry([Supplier(cuit="30999999995", legal_name="Proveedor Canonico SRL")])
     engine = ProcessingEngine(
         lambda: config, lambda _e: None, extractor=lambda _p: FACTURA_A_TEXT, registry_provider=lambda: registry
     )

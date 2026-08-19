@@ -12,7 +12,7 @@ from automator.services.engine.inbox import Inbox
 from automator.services.engine.source_memory import SourceMemory
 from automator.services.file_ops import path_exists
 from automator.services.ledger import Ledger
-from automator.services.processor import InvoiceProcessor
+from automator.services.processing import InvoiceProcessor
 
 logger = logging.getLogger(__name__)
 

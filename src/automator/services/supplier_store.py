@@ -103,18 +103,18 @@ def _merge(existing: Supplier | None, incoming: Supplier) -> Supplier:
         return incoming
     aliases = tuple(dict.fromkeys((*existing.extra_aliases, *incoming.extra_aliases)))
     return incoming.model_copy(
-        update={"extra_aliases": aliases, "nombre_fantasia": incoming.nombre_fantasia or existing.nombre_fantasia}
+        update={"extra_aliases": aliases, "trade_name": incoming.trade_name or existing.trade_name}
     )
 
 
 def _row(supplier: Supplier) -> tuple[str, str, str | None, str]:
-    return (supplier.cuit, supplier.razon_social, supplier.nombre_fantasia, json.dumps(list(supplier.extra_aliases)))
+    return (supplier.cuit, supplier.legal_name, supplier.trade_name, json.dumps(list(supplier.extra_aliases)))
 
 
 def _to_supplier(row: sqlite3.Row) -> Supplier:
     return Supplier(
         cuit=row["cuit"],
-        razon_social=row["razon_social"],
-        nombre_fantasia=row["nombre_fantasia"],
+        legal_name=row["razon_social"],
+        trade_name=row["nombre_fantasia"],
         extra_aliases=tuple(json.loads(row["aliases"])),
     )

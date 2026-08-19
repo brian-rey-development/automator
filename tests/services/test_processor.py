@@ -10,7 +10,7 @@ import pytest
 from automator.config import AppConfig, SocietyMapping
 from automator.domain.models import ProcessOutcome
 from automator.domain.suppliers import Supplier, SupplierRegistry
-from automator.services.processor import InvoiceProcessor
+from automator.services.processing import InvoiceProcessor
 from fixtures.invoices import (
     CUIT_ONE,
     CUIT_TWO,
@@ -50,7 +50,7 @@ def test_supplier_is_canonicalized_by_cuit(
     # the registry canonicalizes it to its official Razon Social.
     config = make_config()
     source = dummy_pdf("descarga.pdf")
-    registry = SupplierRegistry([Supplier(cuit="30999999995", razon_social="Proveedor Ejemplo Canonico SRL")])
+    registry = SupplierRegistry([Supplier(cuit="30999999995", legal_name="Proveedor Ejemplo Canonico SRL")])
     result = _processor(config, FACTURA_A_TEXT, registry).process(source)
 
     folder = config.folder_for_cuit(CUIT_ONE) / "Proveedor Ejemplo Canonico SRL"
@@ -77,7 +77,7 @@ def test_supplier_is_canonicalized_by_name_when_cuit_absent(
     config = make_config()
     source = dummy_pdf("por_nombre.pdf")
     text = f"FACTURA\nCod. 01\nRazon Social: DISTRIBUIDORA NÓRDICA SA\nComp. Nro: 0001-00000001\nCUIT: {CUIT_ONE}\n"
-    registry = SupplierRegistry([Supplier(cuit="30707730214", razon_social="Distribuidora Nordica SA")])
+    registry = SupplierRegistry([Supplier(cuit="30707730214", legal_name="Distribuidora Nordica SA")])
     result = _processor(config, text, registry).process(source)
 
     folder = config.folder_for_cuit(CUIT_ONE) / "Distribuidora Nordica SA"

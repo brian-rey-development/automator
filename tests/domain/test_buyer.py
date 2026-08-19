@@ -21,8 +21,8 @@ def _order(buyer_cuit: str | None = None, buyer_name: str | None = None, ambiguo
     )
 
 
-def _society(cuit: str, name: str, nombre_fantasia: str | None = None, aliases: tuple[str, ...] = ()) -> SocietyMapping:
-    return SocietyMapping(cuit=cuit, name=name, nombre_fantasia=nombre_fantasia, aliases=aliases)
+def _society(cuit: str, name: str, trade_name: str | None = None, aliases: tuple[str, ...] = ()) -> SocietyMapping:
+    return SocietyMapping(cuit=cuit, name=name, trade_name=trade_name, aliases=aliases)
 
 
 def test_exact_cuit_wins() -> None:
@@ -58,7 +58,7 @@ def test_fuzzy_matches_via_alias() -> None:
 
 def test_fuzzy_matches_via_nombre_fantasia() -> None:
     societies = [
-        _society(CUIT_ONE, "COMPRADORA UNO SA", nombre_fantasia="Compradora Uno"),
+        _society(CUIT_ONE, "COMPRADORA UNO SA", trade_name="Compradora Uno"),
         _society(CUIT_TWO, "TOTALMENTE DISTINTA SRL"),
     ]
     resolution = resolve_buyer(_order(buyer_name="Compradora Uno"), societies)

@@ -8,8 +8,8 @@ from pydantic import ValidationError
 from automator.domain.suppliers import Supplier, SupplierRegistry
 
 
-def _supplier(cuit: str, razon_social: str, **extra: object) -> Supplier:
-    return Supplier(cuit=cuit, razon_social=razon_social, **extra)  # type: ignore[arg-type]
+def _supplier(cuit: str, legal_name: str, **extra: object) -> Supplier:
+    return Supplier(cuit=cuit, legal_name=legal_name, **extra)
 
 
 def test_supplier_normalizes_and_validates_cuit() -> None:
@@ -32,7 +32,7 @@ def test_supplier_rejects_empty_razon_social() -> None:
 
 
 def test_aliases_are_normalized_from_all_names() -> None:
-    supplier = _supplier("30999999995", "Café del Sur SA", nombre_fantasia="CafeSur", extra_aliases=("Cafe del Sur",))
+    supplier = _supplier("30999999995", "Café del Sur SA", trade_name="CafeSur", extra_aliases=("Cafe del Sur",))
     aliases = supplier.aliases()
     assert "cafe del sur sa" in aliases
     assert "cafesur" in aliases
@@ -43,7 +43,7 @@ def test_registry_matches_by_cuit() -> None:
     registry = SupplierRegistry([_supplier("30999999995", "PROVEEDOR EJEMPLO SRL")])
     match = registry.match("bla CUIT 30-99999999-5 bla", exclude_cuits=set())
     assert match is not None
-    assert match.razon_social == "PROVEEDOR EJEMPLO SRL"
+    assert match.legal_name == "PROVEEDOR EJEMPLO SRL"
 
 
 def test_registry_excludes_buyer_cuit() -> None:
@@ -66,12 +66,6 @@ def test_registry_falls_back_to_name_when_no_cuit() -> None:
 def test_registry_name_fallback_ignores_unknown_text() -> None:
     registry = SupplierRegistry([_supplier("30999999995", "Distribuidora Nordica SA")])
     assert registry.match("Proveedor: OTRA COSA CUALQUIERA", exclude_cuits=set()) is None
-
-
-def test_canonical_name_is_razon_social() -> None:
-    supplier = _supplier("30999999995", "Distribuidora Nordica SA", nombre_fantasia="NordSur")
-    registry = SupplierRegistry([supplier])
-    assert registry.canonical_name(supplier) == "Distribuidora Nordica SA"
 
 
 def test_search_finds_by_partial_name() -> None:

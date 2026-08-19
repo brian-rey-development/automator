@@ -38,10 +38,17 @@ def test_cuit_with_bad_check_digit_is_rejected() -> None:
 
 def test_society_accepts_fantasia_and_aliases() -> None:
     society = SocietyMapping(
-        cuit="30111111118", name="EMPRESA EJEMPLO SA", nombre_fantasia="Ejemplo", aliases=("Empresa Ejemplo",)
+        cuit="30111111118", name="EMPRESA EJEMPLO SA", trade_name="Ejemplo", aliases=("Empresa Ejemplo",)
     )
-    assert society.nombre_fantasia == "Ejemplo"
+    assert society.trade_name == "Ejemplo"
     assert society.aliases == ("Empresa Ejemplo",)
+
+
+def test_society_loads_legacy_nombre_fantasia_key() -> None:
+    society = SocietyMapping.model_validate(
+        {"cuit": "30111111118", "name": "EMPRESA EJEMPLO SA", "nombre_fantasia": "Ejemplo"}
+    )
+    assert society.trade_name == "Ejemplo"
 
 
 def test_folder_for_cuit_derives_under_base() -> None:

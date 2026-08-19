@@ -18,8 +18,8 @@ from automator.services.excel_import import (
 
 def test_map_columns_matches_accented_and_dotted_headers() -> None:
     columns = map_columns(["Razón Social", "Nombre de Fantasía", "C.U.I.T."])
-    assert columns["razon_social"] == "Razón Social"
-    assert columns["nombre_fantasia"] == "Nombre de Fantasía"
+    assert columns["legal_name"] == "Razón Social"
+    assert columns["trade_name"] == "Nombre de Fantasía"
     assert columns["cuit"] == "C.U.I.T."
 
 
@@ -28,7 +28,7 @@ def test_parse_suppliers_builds_a_valid_supplier() -> None:
     report = parse_suppliers(rows)
     assert report.invalid == []
     assert report.created[0].cuit == "30999999995"
-    assert report.created[0].nombre_fantasia == "NordSur"
+    assert report.created[0].trade_name == "NordSur"
 
 
 def test_parse_suppliers_reports_invalid_cuit_without_aborting() -> None:
@@ -72,7 +72,7 @@ def test_parse_societies_builds_a_mapping() -> None:
     society = parse_societies(rows).created[0]
     assert society.cuit == "30111111118"
     assert society.name == "Compradora Uno SA"
-    assert society.nombre_fantasia == "Uno"
+    assert society.trade_name == "Uno"
 
 
 def test_read_rows_reads_headers_and_numeric_cuit(tmp_path: Path) -> None:

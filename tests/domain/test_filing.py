@@ -68,7 +68,7 @@ def test_unknown_buyer_is_unclassified() -> None:
 
 
 def test_own_society_trade_name_as_issuer_is_unreliable() -> None:
-    society = SocietyMapping(cuit="30111111118", name="EMPRESA EJEMPLO SA", nombre_fantasia="Ejemplo")
+    society = SocietyMapping(cuit="30111111118", name="EMPRESA EJEMPLO SA", trade_name="Ejemplo")
     assert is_reliable(_invoice("Ejemplo"), (society,)) is False
 
 

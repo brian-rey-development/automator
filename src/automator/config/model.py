@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from automator.config.defaults import DUPLICATES_FOLDER_NAME, REVIEW_FOLDER_NAME
 from automator.domain.cuit import CUIT_LENGTH, coerce_cuit, is_valid_cuit
@@ -32,11 +32,11 @@ class SocietyMapping(BaseModel):
     the legal name (base/{Razon Social}), so every company files under one root.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
 
     cuit: str
     name: str
-    nombre_fantasia: str | None = None
+    trade_name: str | None = Field(default=None, validation_alias=AliasChoices("trade_name", "nombre_fantasia"))
     aliases: tuple[str, ...] = ()
 
     @field_validator("cuit")
@@ -57,8 +57,7 @@ class SocietyMapping(BaseModel):
         return value.strip()
 
     def match_names(self) -> tuple[str, ...]:
-        """Legal name plus trade name and aliases, for name-based buyer matching."""
-        extra = (self.nombre_fantasia,) if self.nombre_fantasia else ()
+        extra = (self.trade_name,) if self.trade_name else ()
         return (self.name, *extra, *self.aliases)
 
 

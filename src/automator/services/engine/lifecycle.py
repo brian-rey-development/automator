@@ -24,7 +24,7 @@ from automator.services.engine.worker import (
 )
 from automator.services.ledger import Ledger
 from automator.services.pdf_reader import extract_text
-from automator.services.processor import InvoiceProcessor, RegistryProvider, TextExtractor, empty_registry
+from automator.services.processing import InvoiceProcessor, RegistryProvider, TextExtractor, empty_registry
 from automator.services.watcher import FolderWatcher
 
 logger = logging.getLogger(__name__)

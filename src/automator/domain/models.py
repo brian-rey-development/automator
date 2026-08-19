@@ -110,9 +110,5 @@ class ProcessResult:
     intended: ProcessOutcome | None = None
 
     @property
-    def is_success(self) -> bool:
-        return self.outcome in (ProcessOutcome.MOVED, ProcessOutcome.DRY_RUN)
-
-    @property
     def counted_outcome(self) -> ProcessOutcome:
         return self.outcome if self.intended is None else self.intended

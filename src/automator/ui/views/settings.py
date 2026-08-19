@@ -149,8 +149,8 @@ class SettingsView(ctk.CTkScrollableFrame):
 
     def _society_row(self, index: int, society: SocietyMapping) -> None:
         subtitle = f"CUIT {format_cuit(society.cuit)}"
-        if society.nombre_fantasia:
-            subtitle = f"{subtitle}   -   {society.nombre_fantasia}"
+        if society.trade_name:
+            subtitle = f"{subtitle}   -   {society.trade_name}"
         entity_row(
             self.societies_list,
             index,
@@ -188,7 +188,7 @@ class SettingsView(ctk.CTkScrollableFrame):
         entity_row(
             self.suppliers_list,
             index,
-            supplier.razon_social,
+            supplier.legal_name,
             f"CUIT {format_cuit(supplier.cuit)}",
             self._fonts,
             self._fonts.body,

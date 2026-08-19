@@ -22,7 +22,7 @@ class SocietyDialog(ctk.CTkToplevel):
         self.result: SocietyMapping | None = None
         self._cuit = tk.StringVar(value=existing.cuit if existing else "")
         self._name = tk.StringVar(value=existing.name if existing else "")
-        self._fantasia = tk.StringVar(value=existing.nombre_fantasia if existing and existing.nombre_fantasia else "")
+        self._fantasia = tk.StringVar(value=existing.trade_name if existing and existing.trade_name else "")
         self._aliases = tk.StringVar(value=_ALIAS_SEPARATOR.join(existing.aliases) if existing else "")
 
         self.title("Editar empresa" if existing else "Nueva empresa")
@@ -72,7 +72,7 @@ class SocietyDialog(ctk.CTkToplevel):
             self.result = SocietyMapping(
                 cuit=self._cuit.get().strip(),
                 name=self._name.get().strip(),
-                nombre_fantasia=self._fantasia.get().strip() or None,
+                trade_name=self._fantasia.get().strip() or None,
                 aliases=_parse_aliases(self._aliases.get()),
             )
         except ValidationError as exc:

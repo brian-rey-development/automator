@@ -86,7 +86,7 @@ def test_society_rows_add_and_remove(window: MainWindow) -> None:
 def test_suppliers_search_lists_matches(window: MainWindow) -> None:
     assert window._supplier_store is not None
     assert window._registry_store is not None
-    window._supplier_store.bulk_upsert([Supplier(cuit="30999999995", razon_social="Distribuidora Nordica SA")])
+    window._supplier_store.bulk_upsert([Supplier(cuit="30999999995", legal_name="Distribuidora Nordica SA")])
     window._registry_store.reload()
     window._config_view.supplier_search_var.set("nord")
     window._suppliers.refresh()
@@ -100,7 +100,7 @@ def test_clear_suppliers_button_disabled_when_registry_is_empty(window: MainWind
     window._suppliers.refresh()
     assert window._config_view.clear_suppliers_btn.cget("state") == "disabled"
 
-    window._supplier_store.bulk_upsert([Supplier(cuit="30999999995", razon_social="Nordica SA")])
+    window._supplier_store.bulk_upsert([Supplier(cuit="30999999995", legal_name="Nordica SA")])
     window._registry_store.reload()
     window._suppliers.refresh()
     assert window._config_view.clear_suppliers_btn.cget("state") == "normal"
