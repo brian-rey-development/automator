@@ -33,7 +33,7 @@ def record_result(ledger: Ledger | None, result: ProcessResult) -> None:
 def is_archived_duplicate(ledger: Ledger | None, invoice: ParsedInvoice) -> bool:
     if ledger is None or invoice.identity is None:
         return False
-    destination = ledger.archived_destination(invoice.identity)
+    destination = ledger.archived_destination(invoice.identity, invoice.issuer_cuit)
     # A real duplicate only if the previously archived file is still there. If the
     # original was removed, this copy must be filed, never lost as a phantom duplicate.
     return destination is not None and path_exists(Path(destination))

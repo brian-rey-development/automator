@@ -14,6 +14,7 @@ import threading
 from pathlib import Path
 
 from automator.domain.suppliers import Supplier, SupplierRegistry
+from automator.services.persistence.sqlite import connect_wal
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS suppliers (
@@ -29,13 +30,9 @@ class SupplierStore:
     """Thread-safe SQLite store of suppliers, keyed by CUIT."""
 
     def __init__(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(path), check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self._conn = connect_wal(path)
         self._lock = threading.Lock()
         with self._lock:
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=NORMAL")
             self._conn.executescript(_SCHEMA)
             self._conn.commit()
 

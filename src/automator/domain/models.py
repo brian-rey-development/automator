@@ -52,7 +52,8 @@ class ParsedInvoice:
     ambiguous_buyer: bool = False  # Several own companies appear: it cannot be decided
     issue_date: date | None = None  # Issue date, if it could be read
     document_type: DocumentType = DocumentType.FACTURA
-    buyer_name: str | None = None  # Buyer's name as printed (used for fuzzy society matching)
+    buyer_name: str | None = None
+    issuer_cuit: str | None = None
 
     @property
     def type_label(self) -> str:

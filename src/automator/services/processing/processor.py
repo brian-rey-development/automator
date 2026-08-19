@@ -98,7 +98,7 @@ class InvoiceProcessor:
         match = self._registry_provider().match(text, exclude_cuits=exclude)
         if match is None:
             return invoice
-        return dataclasses.replace(invoice, supplier=match.razon_social)
+        return dataclasses.replace(invoice, supplier=match.razon_social, issuer_cuit=match.cuit)
 
     def _archive(
         self, source: Path, config: AppConfig, invoice: ParsedInvoice, decision: FilingDecision

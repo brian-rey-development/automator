@@ -8,9 +8,7 @@ from pathlib import Path
 MAX_LINES = 250
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "automator"
-ALLOWLIST = {
-    "src/automator/domain/parser.py",
-}
+ALLOWLIST: set[str] = set()
 
 
 def _line_count(path: Path) -> int:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from automator.domain.models import ParsedInvoice, ProcessOutcome, ProcessResult, Voucher, VoucherKind
@@ -115,3 +116,48 @@ def test_ledger_persists_across_reopen(tmp_path: Path) -> None:
     second = Ledger(path)
     assert len(second.recent()) == 1  # The history survives the close.
     second.close()
+
+
+def test_archived_destination_matches_renamed_supplier_via_issuer_cuit(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "h.db")
+    original = replace(_invoice(supplier="ACME S.A."), issuer_cuit="30712345673")
+    dest = tmp_path / "a.pdf"
+    dest.write_text("one")
+    ledger.record(_result(ProcessOutcome.MOVED, dest, original))
+    renamed = _invoice(supplier="ACME NUEVO")
+    assert renamed.identity is not None
+    assert renamed.identity != original.identity
+    assert ledger.archived_destination(renamed.identity, "30712345673") == str(dest)
+    ledger.close()
+
+
+def test_old_history_db_gains_issuer_cuit_column(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL,
+            source_name TEXT NOT NULL,
+            identity TEXT,
+            supplier TEXT,
+            voucher TEXT,
+            outcome TEXT NOT NULL,
+            destination TEXT,
+            message TEXT,
+            reverted INTEGER NOT NULL DEFAULT 0
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+    ledger = Ledger(path)
+    row = ledger._conn.execute("PRAGMA table_info(records)").fetchall()
+    columns = {item[1] for item in row}
+    assert "issuer_cuit" in columns
+    version = ledger._conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
+    assert version == 2
+    ledger.close()

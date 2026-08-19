@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 
 from automator.domain.models import ProcessOutcome, ProcessResult
+from automator.services.persistence.migrations import apply_migrations
+from automator.services.persistence.sqlite import connect_wal
 
 logger = logging.getLogger(__name__)
 
@@ -64,23 +66,18 @@ class Ledger:
     """Thread-safe history: the worker writes and the interface reads."""
 
     def __init__(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(path), check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self._conn = connect_wal(path)
         self._lock = threading.Lock()
         with self._lock:
-            # WAL survives a crash mid-write far better than the default rollback
-            # journal, and NORMAL avoids an fsync on every append (safe under WAL:
-            # only the last transaction can be lost on an OS/power crash).
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=NORMAL")
             self._conn.executescript(_SCHEMA)
+            apply_migrations(self._conn)
             self._conn.commit()
 
     def record(self, result: ProcessResult, timestamp: str | None = None) -> None:
         identity = result.invoice.identity if result.invoice else None
         supplier = result.invoice.supplier if result.invoice else None
         voucher = result.invoice.type_label if result.invoice else None
+        issuer_cuit = result.invoice.issuer_cuit if result.invoice else None
         destination = str(result.destination) if result.destination else None
         row = (
             timestamp or datetime.now().isoformat(timespec="seconds"),
@@ -91,12 +88,13 @@ class Ledger:
             result.outcome.value,
             destination,
             result.message,
+            issuer_cuit,
         )
         with self._lock:
             self._conn.execute(
                 "INSERT INTO records"
-                " (ts, source_name, identity, supplier, voucher, outcome, destination, message)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " (ts, source_name, identity, supplier, voucher, outcome, destination, message, issuer_cuit)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 row,
             )
             self._conn.commit()
@@ -108,19 +106,20 @@ class Ledger:
             cursor = self._conn.execute(query, (identity, *(o.value for o in _ARCHIVED)))
             return cursor.fetchone() is not None
 
-    def archived_destination(self, identity: str) -> str | None:
-        """Destination of the most recent archived record for that identity, if any.
-
-        Used to confirm a suspected duplicate: if the recorded file is gone, it is not a
-        real duplicate and must be filed again rather than diverted to _DUPLICADOS.
-        """
+    def archived_destination(self, identity: str, issuer_cuit: str | None = None) -> str | None:
         placeholders = ", ".join("?" for _ in _ARCHIVED)
+        clause = "identity = ?"
+        params: list[object] = [*(o.value for o in _ARCHIVED), identity]
+        suffix = _identity_suffix(identity)
+        if issuer_cuit and suffix:
+            clause += " OR (issuer_cuit = ? AND identity LIKE ?)"
+            params.extend([issuer_cuit, f"%|{suffix}"])
         query = (
-            f"SELECT destination FROM records WHERE identity = ? AND reverted = 0"
-            f" AND destination IS NOT NULL AND outcome IN ({placeholders}) ORDER BY id DESC LIMIT 1"
+            f"SELECT destination FROM records WHERE reverted = 0 AND destination IS NOT NULL"
+            f" AND outcome IN ({placeholders}) AND ({clause}) ORDER BY id DESC LIMIT 1"
         )
         with self._lock:
-            cursor = self._conn.execute(query, (identity, *(o.value for o in _ARCHIVED)))
+            cursor = self._conn.execute(query, params)
             row = cursor.fetchone()
         return row["destination"] if row else None
 
@@ -170,6 +169,16 @@ class Ledger:
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+
+_IDENTITY_PARTS = 3
+
+
+def _identity_suffix(identity: str) -> str | None:
+    parts = identity.rsplit("|", 2)
+    if len(parts) != _IDENTITY_PARTS:
+        return None
+    return f"{parts[1]}|{parts[2]}"
 
 
 def _to_record(row: sqlite3.Row) -> LedgerRecord:
