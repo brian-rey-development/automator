@@ -13,7 +13,7 @@ import customtkinter as ctk
 from automator import __version__
 from automator.config import config_path, load_store
 from automator.logging_config import log_location, setup_logging
-from automator.ui.main_window import MainWindow
+from automator.ui.shell import MainWindow
 from automator.ui.theme import init_appearance
 
 logger = logging.getLogger(__name__)

@@ -18,8 +18,11 @@ from automator.config import AppConfig, ConfigStore, SocietyMapping
 from automator.domain.models import ProcessOutcome, ProcessResult
 from automator.domain.suppliers import Supplier
 from automator.services.engine import EngineEvent, EngineEventType
-from automator.ui import main_window
-from automator.ui.main_window import MainWindow
+from automator.ui import shell, system_utils
+from automator.ui.controllers import history_actions as history_actions_mod
+from automator.ui.controllers import settings_form as settings_form_mod
+from automator.ui.controllers import suppliers as suppliers_mod
+from automator.ui.shell import MainWindow
 
 
 def _config(tmp_path: Path) -> AppConfig:
@@ -34,7 +37,8 @@ def _config(tmp_path: Path) -> AppConfig:
 
 @pytest.fixture
 def window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[MainWindow]:
-    monkeypatch.setattr(main_window, "ledger_path", lambda: tmp_path / "history.db")
+    monkeypatch.setattr(shell, "ledger_path", lambda: tmp_path / "history.db")
+    monkeypatch.setattr(system_utils, "run_async", lambda fn: fn())
     try:
         root = ctk.CTk()
     except Exception as exc:  # noqa: BLE001 -- no display: the test is skipped, it is not a failure
@@ -54,9 +58,6 @@ def window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[MainWind
 
 
 def test_window_builds_and_switches_views(window: MainWindow) -> None:
-    # winfo_manager() does not depend on the toplevel being visible: "grid" if it is
-    # mounted, "" if grid_remove was called. It is checked with the flat frames; the
-    # config view (scrollable) is only exercised to make sure it does not break.
     window._show("history")
     window.update_idletasks()
     assert window._history_view.winfo_manager() == "grid"
@@ -73,13 +74,13 @@ def test_window_builds_and_switches_views(window: MainWindow) -> None:
 
 
 def test_society_rows_add_and_remove(window: MainWindow) -> None:
-    window._societies = [SocietyMapping(cuit="30111111118", name="EMPRESA UNA")]
-    window._refresh_societies_list()
+    window._settings_form.societies = [SocietyMapping(cuit="30111111118", name="EMPRESA UNA")]
+    window._settings_form.refresh_societies()
     window.update_idletasks()
-    assert window._societies_list.winfo_children()
-    window._remove_society(0)
+    assert window._config_view.societies_list.winfo_children()
+    window._settings_form.remove_society(0)
     window.update_idletasks()
-    assert not window._societies
+    assert not window._settings_form.societies
 
 
 def test_suppliers_search_lists_matches(window: MainWindow) -> None:
@@ -87,22 +88,22 @@ def test_suppliers_search_lists_matches(window: MainWindow) -> None:
     assert window._registry_store is not None
     window._supplier_store.bulk_upsert([Supplier(cuit="30999999995", razon_social="Distribuidora Nordica SA")])
     window._registry_store.reload()
-    window._supplier_search_var.set("nord")
-    window._refresh_suppliers()
+    window._config_view.supplier_search_var.set("nord")
+    window._suppliers.refresh()
     window.update_idletasks()
-    assert window._suppliers_list.winfo_children()
+    assert window._config_view.suppliers_list.winfo_children()
 
 
 def test_clear_suppliers_button_disabled_when_registry_is_empty(window: MainWindow) -> None:
     assert window._supplier_store is not None
     assert window._registry_store is not None
-    window._refresh_suppliers()
-    assert window._clear_suppliers_btn.cget("state") == "disabled"
+    window._suppliers.refresh()
+    assert window._config_view.clear_suppliers_btn.cget("state") == "disabled"
 
     window._supplier_store.bulk_upsert([Supplier(cuit="30999999995", razon_social="Nordica SA")])
     window._registry_store.reload()
-    window._refresh_suppliers()
-    assert window._clear_suppliers_btn.cget("state") == "normal"
+    window._suppliers.refresh()
+    assert window._config_view.clear_suppliers_btn.cget("state") == "normal"
 
 
 def test_import_suppliers_updates_registry(window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,10 +114,11 @@ def test_import_suppliers_updates_registry(window: MainWindow, tmp_path: Path, m
     workbook.active.append(["CUIT", "Razón Social"])
     workbook.active.append(["30-99999999-5", "Nordica SA"])
     workbook.save(path)
-    monkeypatch.setattr(main_window.filedialog, "askopenfilename", lambda **_kwargs: str(path))
-    monkeypatch.setattr(main_window, "ImportReportDialog", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(suppliers_mod.filedialog, "askopenfilename", lambda **_kwargs: str(path))
+    monkeypatch.setattr(suppliers_mod, "ImportReportDialog", lambda *_args, **_kwargs: None)
 
-    window._import_suppliers()
+    window._suppliers.import_suppliers()
+    window.update()
 
     assert window._supplier_store.count() == 1
     assert len(window._registry_store.get()) == 1
@@ -128,32 +130,33 @@ def test_import_societies_adds_to_list(window: MainWindow, tmp_path: Path, monke
     workbook.active.append(["CUIT", "Razón Social"])
     workbook.active.append(["30-11111111-8", "Compradora Uno SA"])
     workbook.save(path)
-    monkeypatch.setattr(main_window.filedialog, "askopenfilename", lambda **_kwargs: str(path))
-    monkeypatch.setattr(main_window, "ImportReportDialog", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(settings_form_mod.filedialog, "askopenfilename", lambda **_kwargs: str(path))
+    monkeypatch.setattr(settings_form_mod, "ImportReportDialog", lambda *_args, **_kwargs: None)
 
-    window._import_societies()
+    window._settings_form.import_societies()
+    window.update()
 
-    assert [society.cuit for society in window._societies] == ["30111111118"]
+    assert [society.cuit for society in window._settings_form.societies] == ["30111111118"]
 
 
 def test_advanced_config_starts_collapsed(window: MainWindow) -> None:
     window._show("config")
     window.update_idletasks()
-    assert window._advanced_body.winfo_manager() == ""
-    window._toggle_advanced()
+    assert window._config_view.advanced_body.winfo_manager() == ""
+    window._config_view.toggle_advanced()
     window.update_idletasks()
-    assert window._advanced_body.winfo_manager() == "grid"
+    assert window._config_view.advanced_body.winfo_manager() == "grid"
 
 
 def test_collect_config_roundtrips_widget_values(window: MainWindow, tmp_path: Path) -> None:
-    window._input_var.set(str(tmp_path / "entrada"))
-    window._output_var.set(str(tmp_path / "salida"))
-    window._unknown_var.set(str(tmp_path / "salida" / "_sin"))
-    window._quarantine_var.set(str(tmp_path / "salida" / "_err"))
-    window._timeout_var.set("15")
-    window._template_var.set("{year}/{supplier}")
-    window._copy_var.set(True)
-    config = window._collect_config()
+    window._config_view.input_var.set(str(tmp_path / "entrada"))
+    window._config_view.output_var.set(str(tmp_path / "salida"))
+    window._config_view.unknown_var.set(str(tmp_path / "salida" / "_sin"))
+    window._config_view.quarantine_var.set(str(tmp_path / "salida" / "_err"))
+    window._config_view.timeout_var.set("15")
+    window._config_view.template_var.set("{year}/{supplier}")
+    window._config_view.copy_var.set(True)
+    config = window._settings_form.collect_config()
     assert config is not None
     assert config.stability_timeout_s == 15.0
     assert config.destination_template == "{year}/{supplier}"
@@ -161,11 +164,11 @@ def test_collect_config_roundtrips_widget_values(window: MainWindow, tmp_path: P
 
 
 def test_toggle_button_reflects_state(window: MainWindow) -> None:
-    assert window._toggle_btn.cget("text") == "Iniciar"
-    window._set_running(True)
-    assert window._toggle_btn.cget("text") == "Detener"
-    window._set_running(False)
-    assert window._toggle_btn.cget("text") == "Iniciar"
+    assert window._monitor_view.toggle_btn.cget("text") == "Iniciar"
+    window._engine_bridge.set_running(True)
+    assert window._monitor_view.toggle_btn.cget("text") == "Detener"
+    window._engine_bridge.set_running(False)
+    assert window._monitor_view.toggle_btn.cget("text") == "Iniciar"
 
 
 def test_poll_events_applies_a_result(window: MainWindow) -> None:
@@ -177,8 +180,8 @@ def test_poll_events_applies_a_result(window: MainWindow) -> None:
         message="ok",
     )
     window._events.put(EngineEvent(EngineEventType.RESULT, "ok", Path("a.pdf"), result))
-    window._poll_events()
-    assert window._counts["archived"] == 1
+    window._engine_bridge.poll_events()
+    assert window._engine_bridge.counts["archived"] == 1
 
 
 def test_clear_history_clears_ledger_without_touching_files(
@@ -196,23 +199,23 @@ def test_clear_history_clears_ledger_without_touching_files(
             message="ok",
         )
     )
-    window._refresh_history()
-    assert window._history_tree.get_children()
-    monkeypatch.setattr(main_window.messagebox, "askyesno", lambda *args, **kwargs: True)
-    monkeypatch.setattr(main_window.messagebox, "showinfo", lambda *args, **kwargs: None)
-    window._clear_history()
+    window._history_actions.refresh()
+    assert window._history_view.tree.get_children()
+    monkeypatch.setattr(history_actions_mod.messagebox, "askyesno", lambda *args, **kwargs: True)
+    monkeypatch.setattr(history_actions_mod.messagebox, "showinfo", lambda *args, **kwargs: None)
+    window._history_actions.clear_history()
     assert window._ledger.recent() == []
-    assert not window._history_tree.get_children()
+    assert not window._history_view.tree.get_children()
     assert pdf.exists()
 
 
 def test_clear_history_resets_session_counters(window: MainWindow, monkeypatch: pytest.MonkeyPatch) -> None:
-    window._increment("detected")
-    window._increment("archived")
-    assert window._counts["detected"] == 1
-    monkeypatch.setattr(main_window.messagebox, "askyesno", lambda *args, **kwargs: True)
-    monkeypatch.setattr(main_window.messagebox, "showinfo", lambda *args, **kwargs: None)
+    window._engine_bridge.increment("detected")
+    window._engine_bridge.increment("archived")
+    assert window._engine_bridge.counts["detected"] == 1
+    monkeypatch.setattr(history_actions_mod.messagebox, "askyesno", lambda *args, **kwargs: True)
+    monkeypatch.setattr(history_actions_mod.messagebox, "showinfo", lambda *args, **kwargs: None)
 
-    window._clear_history()
+    window._history_actions.clear_history()
 
-    assert window._counts == {"detected": 0, "archived": 0, "review": 0, "error": 0}
+    assert window._engine_bridge.counts == {"detected": 0, "archived": 0, "review": 0, "error": 0}
