@@ -104,7 +104,7 @@ installer with a start-menu shortcut and an auto-start option:
 iscc installer\automator.iss
 ```
 
-It lands in `dist\installer\Automator-Setup-1.0.1.exe`.
+It lands in `dist\installer\Automator-Setup-1.1.0.exe`.
 
 ## Quality
 
@@ -117,7 +117,8 @@ pytest            # tests with core coverage
 
 Continuous integration runs the exact same commands on Python 3.11, 3.12 and 3.13
 (UI smoke tests run under xvfb), plus a Windows job that builds the executable on
-every push. Core coverage has an 80% floor enforced in CI.
+every push. Core coverage has a 90% floor enforced in CI. The `automator-cli`
+entry point is an alias of the desktop app, not a separate headless CLI.
 
 ## Architecture
 
@@ -126,11 +127,12 @@ services that do input/output and from the interface.
 
 ```
 src/automator/
-  domain/      Models, parser, naming and classification (pure logic)
-  services/    PDF reading, file IO, watcher and processing engine
-  ui/          Desktop interface (CustomTkinter)
-  config.py    Validated configuration model and persistence
-tests/         Core and services test suite
+  domain/      Parser, filing policy, models (pure logic)
+  services/    Engine, processing, persistence, file IO
+  ui/          Shell, views, controllers (CustomTkinter)
+  config/      Validated configuration model and persistence
+  paths.py     Config, data, log and asset locations
+tests/         Mirrors the layers
 ```
 
 The engine runs on a background thread and talks to the interface through an

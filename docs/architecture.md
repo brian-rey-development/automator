@@ -6,10 +6,24 @@ core has no knowledge of a graphical interface or a disk.
 
 ```
 src/automator/
-  domain/      Pure, 100% testable logic (no IO)
-  services/    IO and orchestration (PDF, files, watcher, engine, history)
-  ui/          Desktop interface (CustomTkinter)
-  config.py    Validated, immutable configuration model + persistence
+  domain/           Pure, 100% testable logic (no IO)
+    parser/         AFIP invoice and purchase-order extraction
+    filing/         decide_filing, destination template, reliability
+    buyer.py        CUIT then fuzzy name match (threshold 0.90, margin 0.05)
+    suppliers.py    registry matching that never guesses on collisions
+  services/
+    engine/         lifecycle, worker, inbox, source memory, events
+    processing/     processor orchestration and placement
+    persistence/    WAL connections and additive migrations
+    undo.py         move back + mark_reverted with restore on mark failure
+  ui/
+    shell.py        compose, nav, shutdown
+    views/          sidebar, monitor, history, settings
+    controllers/    engine bridge, history, settings, suppliers, pending
+    widgets/        buttons, modal, forms
+    dialogs/        onboarding, society, import report
+  config/           AppConfig, store, folder-name defaults
+  paths.py          config/data/log/assets locations
 ```
 
 ## Domain layer (`domain/`)
@@ -18,32 +32,40 @@ Pure, deterministic functions with no side effects:
 
 - `models.py` - immutable models: `Voucher`, `ParsedInvoice`, `ProcessOutcome`,
   `ProcessResult`. `ParsedInvoice` exposes derived properties (`has_number`,
-  `has_supplier`, `identity`).
-- `parser.py` - extracts type/letter (by AFIP code with a text-based fallback),
+  `has_supplier`, `identity`, `type_label`).
+- `parser/` - extracts type/letter (by AFIP code with a text-based fallback),
   number, supplier, buyer CUIT and date. **Never raises**: when it encounters
-  unexpected text it returns deterministic defaults.
-- `classifier.py` - resolves the destination folder by applying the template.
+  unexpected text it returns deterministic defaults. Purchase orders are
+  header-anchored, not a free substring.
+- `filing/` - `decide_filing` is the policy. Destination templates ignore
+  unknown tokens. Reliability matches own societies by normalized legal name,
+  trade name and aliases.
 - `filenames.py` - name sanitizing for Windows and assembly of the final name.
+
+Fuzzy buyer matches file as `MOVED` with an auditable message. That is a
+product decision: the runner-up is never chosen.
 
 ## Services layer (`services/`)
 
 - `pdf_reader.py` - extracts text with deterministic file closing and
   per-page resilience.
-- `file_ops.py` - atomic moves, no overwriting, with support for long paths
-  and UNC on Windows.
-- `watcher.py` - watches the input folder (watchdog).
-- `processor.py` - orchestrates the processing of a PDF and decides its
-  destination.
-- `engine.py` - background engine: queue, worker, periodic rescan.
-- `ledger.py` - audit history in SQLite (basis for history, duplicates and
-  undo).
+- `file_ops.py` - atomic moves and copies, no overwriting, samefile no-op,
+  long paths and UNC on Windows.
+- `watcher.py` - watches the input folder (watchdog), injectable into the engine.
+- `processing/` - reads, parses, classifies, then places. Policy is in domain.
+- `engine/` - supervisor of generations: queue, worker, rescanner, source memory.
+- `ledger.py` - audit history in SQLite. Schema is versioned. Duplicate check
+  is identity **or** `(issuer_cuit, number, type)`.
+- `undo.py` - move back to input, then mark reverted. If the mark fails, the
+  file is restored.
 
 ## Interface layer (`ui/`)
 
 CustomTkinter. It contains no business rules: it only displays state and
-triggers engine actions. `main_window.py` coordinates; `onboarding.py` and
-`society_dialog.py` are dialogs; `theme.py` is the design system;
-`system_utils.py` opens folders and shows notifications.
+triggers engine actions. `shell.py` composes. Views take callbacks.
+Controllers own Excel, history and engine IO. Background results return
+through `UiMailbox`, drained on the Tk thread. `EngineBridge.poll_events`
+is the pump.
 
 ## Concurrency model
 
@@ -53,7 +75,7 @@ watcher (thread) ─┐
 rescan (thread)  ─┘                                                  │
                                                                      v
                               event queue.Queue <── UI (Tkinter thread)
-                                    _poll_events (after 150ms)
+                          EngineBridge.poll_events (after 150ms)
 ```
 
 - The engine runs on a background thread; the UI never blocks.

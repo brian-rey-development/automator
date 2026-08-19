@@ -102,6 +102,14 @@ handled. Move is the default and drains the input folder as before.
 - **Test mode** (dry-run): shows what it would do without moving anything.
 - Buttons to open the input, output, review and log folders.
 
+## History
+
+- **Undo** returns the last filed PDF to the input folder and marks the ledger
+  row as reverted. If the mark fails, the file is moved back.
+- **Vaciar historial** clears processing history only. PDFs are not moved or
+  deleted.
+- **Reintentar pendientes** walks `_PARA_REVISAR` and `_ERRORES` recursively.
+
 ## First launch
 
 When you open the app for the first time, a wizard asks for the bare minimum

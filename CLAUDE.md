@@ -37,21 +37,24 @@ Standalone tools: `ruff check .`, `ruff format .`, `mypy`, `pytest`.
 Three layers, dependencies pointing inward (ui -> services -> domain):
 
 - `src/automator/domain/` - pure logic, no side effects, 100% testable (models,
-  parser, classification, naming, CUIT helpers, name normalization, and the
-  supplier registry/matching). Never does IO.
+  parser, filing policy, naming, CUIT helpers, name normalization, and the
+  supplier registry/matching). Never does IO. Filing decisions live in
+  `domain/filing/decide_filing`.
 - `src/automator/services/` - IO and orchestration: PDF reading, file operations,
-  watcher, processing engine and ledger (history in SQLite).
+  watcher, processing engine package, placement, ledger and persistence.
 - `src/automator/ui/` - CustomTkinter interface. Contains no business rules.
-- `src/automator/config.py` - validated, immutable configuration model and its
-  atomic persistence.
+  Shell composes views. Controllers own IO. Widgets never talk to SQLite.
+- `src/automator/config/` - validated, immutable configuration model and its
+  atomic persistence. Platform paths live in `paths.py`.
 
 ### Concurrency model
 
-The engine (`services/engine.py`) runs on a background thread with a queue. The
+The engine (`services/engine/`) runs on a background thread with a queue. The
 UI talks to it via `EngineEvent` on a `queue.Queue` drained only from the Tkinter
-thread (`_poll_events`). **Tkinter is not thread-safe: never touch widgets from a
-thread other than the main one.** The queue and the stop signal are recreated on
-every start ("generation") so an old worker never shares a queue with a new one.
+thread (`EngineBridge.poll_events`). **Tkinter is not thread-safe: never touch
+widgets from a thread other than the main one.** The queue and the stop signal
+are recreated on every start ("generation") so an old worker never shares a
+queue with a new one.
 
 ### On-disk data
 
@@ -61,7 +64,7 @@ every start ("generation") so an old worker never shares a queue with a new one.
   in-memory `SupplierRegistry` snapshot the worker reads.
 - Logs: rotating `automator.log` in the user's log directory.
 
-Paths resolved in `config.py` (`config_path`, `ledger_path`, `log_dir`).
+Paths resolved in `paths.py` (`config_path`, `ledger_path`, `log_dir`, `assets_dir`).
 
 ## Code conventions
 
@@ -82,10 +85,11 @@ Paths resolved in `config.py` (`config_path`, `ledger_path`, `log_dir`).
 - The core (`domain/` and `services/`) is tested with pytest; aim to cover every
   decision branch of processing (moved, unclassified, duplicate, review,
   quarantine).
-- The UI has functional smoke tests in `tests/test_ui.py` that skip themselves
-  when there is no display (they run under xvfb in CI). When touching the UI, run
-  a smoke that builds `MainWindow` without exceptions.
-- `tests/conftest.py` has sample invoice texts and a `make_config` factory.
+- The UI has functional smoke tests in `tests/ui/` that skip themselves when
+  there is no display (they run under xvfb in CI). When touching the UI, run a
+  smoke that builds `MainWindow` from `ui.shell` without exceptions.
+- `tests/conftest.py` has fixtures. Sample invoice texts live in
+  `tests/fixtures/invoices.py`.
 
 ## Gotchas
 
@@ -95,14 +99,22 @@ Paths resolved in `config.py` (`config_path`, `ledger_path`, `log_dir`).
   stable source signature (path, size, mtime) in the ledger to avoid reprocessing.
 - Windows: long-path prefix and the `\\?\UNC\` form for network paths (`file_ops`).
 - The parser never raises: on unexpected text it returns deterministic defaults.
-- Duplicate detection uses the identity `supplier|number|type` against the ledger;
-  only MOVED/UNCLASSIFIED results count as "already filed".
+- Duplicate detection uses the identity `supplier|number|type` against the ledger
+  and, when present, `(issuer_cuit, number, type_label)`. Only MOVED/UNCLASSIFIED
+  results count as "already filed".
+- Fuzzy buyer matching (threshold 0.90, margin 0.05) files as MOVED with an
+  auditable message. It is a product decision, not a guess of the runner-up.
 
 ## Structure
 
 ```
-src/automator/      source code (domain / services / ui / config)
-tests/              core and services test suite
+src/automator/
+  config/           AppConfig, store, folder name defaults
+  domain/           parser, filing, parties, models
+  services/         engine/, processing/, persistence/, IO
+  ui/               shell, views, controllers, widgets, dialogs
+  paths.py          config/data/log/assets locations
+tests/              mirrors layers (domain / services / ui / config)
 scripts/            generators (icon, sample invoices) and Windows build
 installer/          Inno Setup script for the installer
 assets/             brand icon (.ico / .png)

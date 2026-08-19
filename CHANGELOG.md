@@ -3,6 +3,29 @@
 All notable changes to this project. Format based on
 [Keep a Changelog](https://keepachangelog.com/); semantic versioning.
 
+## [1.1.0] - 2026-08-19
+
+### Added
+
+- Filing policy lives in domain (`decide_filing`). Processor only orchestrates.
+- Ledger schema versioning. Existing `history.db` files gain `issuer_cuit`.
+- Duplicate detection is dual-read: historic identity or issuer CUIT plus number
+  and type. A supplier rename no longer files a second copy.
+
+### Changed
+
+- UI split into shell, views and controllers. `main_window.py` is gone.
+- Config, engine and parser are packages. Production files stay under 250 lines.
+- Undo restores the file if marking the ledger fails.
+- `open_folder` no longer creates a typed path that does not exist.
+- PyInstaller `upx=False`. Inno Setup uses a stable AppId.
+
+### Fixed
+
+- Copy/dry-run ERROR is retried on rescan instead of being remembered as seen.
+- Engine stop join timeout keeps the generation alive until threads actually die.
+- SENTINEL is queued even if the watcher fails to stop.
+
 ## [1.0.1] - 2026-08-17
 
 ### Fixed
