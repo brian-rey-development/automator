@@ -8,6 +8,7 @@ single (light) theme done with care, not a generic theme.
 from __future__ import annotations
 
 import tkinter as tk
+from dataclasses import dataclass
 from tkinter import font as tkfont
 from tkinter import ttk
 
@@ -52,10 +53,33 @@ _PREFERRED_FAMILY = "Segoe UI"
 _FALLBACK_FAMILY = "Helvetica"
 
 
+@dataclass(frozen=True)
+class Fonts:
+    h1: ctk.CTkFont
+    h2: ctk.CTkFont
+    body: ctk.CTkFont
+    body_bold: ctk.CTkFont
+    small: ctk.CTkFont
+    hint: ctk.CTkFont
+    stat: ctk.CTkFont
+
+
 def font_family(root: tk.Misc) -> str:
     """Returns Segoe UI on Windows or an available alternative on other systems."""
     families = set(tkfont.families(root))
     return _PREFERRED_FAMILY if _PREFERRED_FAMILY in families else _FALLBACK_FAMILY
+
+
+def make_fonts(family: str) -> Fonts:
+    return Fonts(
+        h1=ctk.CTkFont(family, 22, "bold"),
+        h2=ctk.CTkFont(family, 15, "bold"),
+        body=ctk.CTkFont(family, 13),
+        body_bold=ctk.CTkFont(family, 13, "bold"),
+        small=ctk.CTkFont(family, 12),
+        hint=ctk.CTkFont(family, 11),
+        stat=ctk.CTkFont(family, 26, "bold"),
+    )
 
 
 def init_appearance() -> None:

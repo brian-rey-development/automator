@@ -6,9 +6,15 @@ import logging
 import os
 import subprocess
 import sys
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def run_async(target: Callable[[], object]) -> None:
+    threading.Thread(target=target, daemon=True).start()
 
 
 def open_folder(path: Path) -> None:
