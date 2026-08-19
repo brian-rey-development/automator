@@ -11,6 +11,8 @@ All notable changes to this project. Format based on
 - Ledger schema versioning. Existing `history.db` files gain `issuer_cuit`.
 - Duplicate detection is dual-read: historic identity or issuer CUIT plus number
   and type. A supplier rename no longer files a second copy.
+- In-depth documentation: architecture, how-it-works, data model, persistence,
+  concurrency, invariant, UI, testing, and architecture decision records.
 
 ### Changed
 

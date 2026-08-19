@@ -17,30 +17,41 @@ same versions. Regenerate the lock with `make lock` when dependencies change.
 
 1. Create a branch from `main`.
 2. Write the code and its tests.
-3. `make check` green (lint + types + tests) before committing.
+3. `make check` green (lint + format + types + tests with coverage +
+   import-linter + file size) before committing.
 4. Commits in English, Conventional Commits format.
-5. Open a PR; CI runs lint, formatting, types and tests on Python 3.11/3.12/3.13.
+5. Open a PR; CI runs the same checks on Python 3.11, 3.12 and 3.13, and a
+   Windows job builds the executable.
 
 ## Code standards
 
 - **Identifiers and comments in English.** Comment only the non-obvious why (an
-  invariant, a workaround), never what the code already says. User-facing strings
-  (UI labels, dialog messages, notifications) stay in Spanish for the end users.
+  invariant, a workaround). User-facing strings (UI labels, dialog messages,
+  notifications) stay in Spanish for the end users.
 - Strict typing (`mypy --strict`), no unjustified `Any`.
 - Short functions (<= 20 lines), early returns, immutability by default.
-- No em dashes in any text (code, docs, commits).
+- Production modules stay at or under 200 lines (`scripts/check_file_size.py`,
+  part of `make check` and CI).
+- No em dashes in any text (code, docs, commits). Use a regular hyphen, a comma,
+  or restructure the sentence.
 - Validate at the boundaries (user input, external APIs); trust the interior.
-- No real data (company names, CUITs) in the code or the tests: use generic
-  fictional data.
+- Use generic fictional data in the code and the tests (company names, CUITs).
 
 ## Where things go
 
-- Pure business logic -> `domain/` (with tests).
+- Pure business logic -> `domain/` (with tests). Filing policy lives in
+  `domain/filing/decide_filing`.
 - IO, threads, orchestration -> `services/`.
-- Interface -> `ui/` (no business rules).
+- Interface -> `ui/`. Shell composes views. Controllers own IO. Widgets stay
+  away from SQLite.
+- Validated frozen config -> `config/`.
+
+Import-linter enforces `ui -> services -> domain`. Domain does not import
+config. Config does not import services.
 
 Before adding a classification rule, ask yourself: when in doubt, does the
-invoice go to review? The principle is **never file incorrectly in silence**.
+invoice go to review? The principle is **No invoice is ever misfiled or lost
+silently.** Fuzzy buyer matching is `NEEDS_REVIEW` and lands in `_PARA_REVISAR`.
 
 ## Tools
 
@@ -49,20 +60,24 @@ ruff check .      # linting
 ruff format .     # formatting
 mypy              # strict types
 pytest            # tests
-pytest --cov      # tests with coverage
+pytest --cov      # tests with coverage (fail_under 90)
 ```
 
-Everything is configured in `pyproject.toml`. CI uses exactly the same commands.
+`make check` also runs `PYTHONPATH=src lint-imports` and
+`python scripts/check_file_size.py`. Everything is configured in
+`pyproject.toml`. CI uses the same commands.
 
 ## Tests
 
-- The core (`domain/`, `services/`) must have tests covering each decision
-  branch (moved, unclassified, duplicate, review, quarantine).
-- The UI is tested with functional smokes in `tests/test_ui.py`, which skip
-  themselves when there is no display (in CI they run under xvfb).
-- Core coverage has a floor of 80% (`fail_under` in `pyproject.toml`); CI fails
-  if it drops below that.
-- The sample fixtures are in `tests/conftest.py`. Never use real data.
+- Tests live under `tests/{domain,services,ui,config}/`, mirroring the layers.
+- The core (`domain/`, `services/`) must cover each decision branch (moved,
+  unclassified, duplicate, review, quarantine).
+- UI smokes live in `tests/ui/` (for example `test_main_window.py`). They skip
+  themselves if `CTk()` fails to open a display; in CI they run under xvfb.
+- Core coverage has a floor of 90% (`fail_under` in `pyproject.toml`). The UI
+  package is omitted (`omit = ["*/ui/*"]`).
+- Shared fixtures are in `tests/conftest.py`. Sample invoice texts live in
+  `tests/fixtures/invoices.py`.
 
 ## Commits
 
