@@ -12,7 +12,7 @@ from automator.config import AppConfig
 from automator.domain.models import ProcessOutcome, ProcessResult
 from automator.domain.suppliers import Supplier, SupplierRegistry
 from automator.services.engine import EngineEvent, EngineEventType, ProcessingEngine
-from automator.services.engine import lifecycle as engine_lifecycle
+from automator.services.engine import runtime as engine_runtime
 from automator.services.engine.worker import Worker
 from automator.services.ledger import Ledger
 from fixtures.invoices import FACTURA_A_TEXT
@@ -39,7 +39,7 @@ def _block_worker(monkeypatch: pytest.MonkeyPatch) -> threading.Event:
         release.wait(timeout=30)
 
     monkeypatch.setattr(Worker, "run", stuck_run)
-    monkeypatch.setattr(engine_lifecycle, "WORKER_JOIN_TIMEOUT_S", _JOIN_TIMEOUT_S)
+    monkeypatch.setattr(engine_runtime, "WORKER_JOIN_TIMEOUT_S", _JOIN_TIMEOUT_S)
     return release
 
 
@@ -193,7 +193,9 @@ def test_reprocess_pending_finds_pdfs_nested_in_supplier_subfolders(
 ) -> None:
     # Review files are filed under _PARA_REVISAR/{supplier}/, so retrying them must recurse.
     config = make_config()
-    config.ensure_folders()
+    from automator.services.folders import ensure_folders
+
+    ensure_folders(config)
     nested = config.review_folder / "PROVEEDOR X"
     nested.mkdir(parents=True, exist_ok=True)
     (nested / "factura.pdf").write_bytes(b"%PDF")
@@ -242,7 +244,7 @@ def test_failed_launch_after_worker_start_does_not_orphan(
             raise OSError("no rescan")
         return real_thread(*args, **kwargs)
 
-    monkeypatch.setattr(engine_lifecycle.threading, "Thread", counting_thread)
+    monkeypatch.setattr(engine_runtime.threading, "Thread", counting_thread)
     engine.start()
     assert not engine.is_running
     assert any(event.type is EngineEventType.ERROR for event in events)
@@ -272,9 +274,21 @@ def test_worker_emits_error_when_processor_raises(
         raise RuntimeError("boom")
 
     engine._processor.process = boom  # type: ignore[method-assign]
-    engine._safe_process(source)
+    engine._loop.safe_process(source)
     assert any(event.type is EngineEventType.ERROR for event in events)
     assert any("boom" in event.message for event in events)
+
+
+def test_inbox_rescan_emits_unread_error_once(make_config: Callable[..., AppConfig]) -> None:
+    config = make_config()
+    config.input_folder.parent.mkdir(parents=True, exist_ok=True)
+    config.input_folder.write_text("not-a-directory", encoding="utf-8")
+    events: list[EngineEvent] = []
+    engine = _engine(config, events.append, FACTURA_A_TEXT)
+    engine._inbox.rescan()
+    engine._inbox.rescan()
+    errors = [event for event in events if event.type is EngineEventType.ERROR]
+    assert len(errors) == 1
 
 
 def test_process_existing_emits_error_when_input_is_unreadable(
@@ -351,7 +365,7 @@ def test_failed_start_join_timeout_keeps_refs(
             raise OSError("no rescan")
         return real_thread(*args, **kwargs)
 
-    monkeypatch.setattr(engine_lifecycle.threading, "Thread", counting_thread)
+    monkeypatch.setattr(engine_runtime.threading, "Thread", counting_thread)
     engine.start()
     assert engine.is_running
     assert any(event.type is EngineEventType.ERROR for event in events)

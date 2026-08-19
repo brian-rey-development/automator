@@ -4,18 +4,27 @@ from __future__ import annotations
 
 import sqlite3
 
-_CURRENT = 2
+_V1 = 1
+_V2 = 2
+_CURRENT = 3
 
 
 def apply_migrations(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)")
     current = _read_version(conn)
-    if current < 1:
-        _set_version(conn, 1)
-        current = 1
-    if current < _CURRENT:
+    if current < _V1:
+        _set_version(conn, _V1)
+        current = _V1
+    if current < _V2:
         _add_column(conn, "records", "issuer_cuit", "TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_records_issuer_cuit ON records(issuer_cuit)")
+        _set_version(conn, _V2)
+        current = _V2
+    if current < _CURRENT:
+        _add_column(conn, "records", "issuer_identity", "TEXT")
+        _add_column(conn, "records", "source_signature", "TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_records_issuer_identity ON records(issuer_identity)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_records_source_signature ON records(source_signature)")
         _set_version(conn, _CURRENT)
 
 

@@ -44,7 +44,14 @@ class EngineBridge:
         self._mailbox = mailbox
         self.counts = dict.fromkeys(_COUNTS, 0)
         self.on_running_changed: Callable[[], None] = lambda: None
+        self.on_result: Callable[[], None] = lambda: None
+        self.on_started: Callable[[], None] = lambda: None
         self._active = True
+        self._generation = 0
+        self._ledger_ok = True
+
+    def require_ledger(self, available: bool) -> None:
+        self._ledger_ok = available
 
     def toggle(self) -> None:
         if self._engine.is_running:
@@ -53,6 +60,12 @@ class EngineBridge:
         self.start()
 
     def start(self) -> None:
+        if not self._ledger_ok:
+            messagebox.showerror(
+                "Historial",
+                "No se pudo abrir el historial. No se detectan duplicados ni se puede deshacer.",
+            )
+            return
         if not self._settings.collect_and_save():
             return
         self._monitor.toggle_btn.configure(state="disabled")
@@ -109,10 +122,15 @@ class EngineBridge:
 
     def _handle_event(self, event: EngineEvent) -> None:
         if event.type is EngineEventType.STARTED:
+            self._generation = event.generation_id
             self.reset_session_stats()
             self.set_running(True)
             self._monitor.detail_var.set(event.message)
-        elif event.type is EngineEventType.STOPPED:
+            self.on_started()
+            return
+        if event.generation_id and event.generation_id != self._generation:
+            return
+        if event.type is EngineEventType.STOPPED:
             self.set_running(False)
             if self._settings.consume_restart():
                 self.start()
@@ -145,3 +163,4 @@ class EngineBridge:
             OUTCOME_ROW_TAG[result.counted_outcome],
             destination,
         )
+        self.on_result()

@@ -8,8 +8,9 @@ import customtkinter as ctk
 from pydantic import ValidationError
 
 from automator.config import SocietyMapping
+from automator.domain.validation import first_validation_error
 from automator.ui.theme import CORNER_RADIUS, Palette
-from automator.ui.widgets import make_modal
+from automator.ui.widgets import make_modal, muted_button, primary_button
 
 _ALIAS_SEPARATOR = ","
 
@@ -22,7 +23,7 @@ class SocietyDialog(ctk.CTkToplevel):
         self.result: SocietyMapping | None = None
         self._cuit = tk.StringVar(value=existing.cuit if existing else "")
         self._name = tk.StringVar(value=existing.name if existing else "")
-        self._fantasia = tk.StringVar(value=existing.trade_name if existing and existing.trade_name else "")
+        self._trade_name = tk.StringVar(value=existing.trade_name if existing and existing.trade_name else "")
         self._aliases = tk.StringVar(value=_ALIAS_SEPARATOR.join(existing.aliases) if existing else "")
 
         self.title("Editar empresa" if existing else "Nueva empresa")
@@ -38,7 +39,7 @@ class SocietyDialog(ctk.CTkToplevel):
 
         self._field(container, "CUIT (11 digitos)", self._cuit, row=0)
         self._field(container, "Razon social", self._name, row=1)
-        self._field(container, "Nombre de fantasia (opcional)", self._fantasia, row=2)
+        self._field(container, "Nombre de fantasia (opcional)", self._trade_name, row=2)
         self._field(container, "Alias, separados por coma (opcional)", self._aliases, row=3)
         self._error = ctk.CTkLabel(container, text="", text_color=Palette.ERROR, anchor="w")
         self._error.grid(row=4, column=0, columnspan=2, sticky="ew", padx=16, pady=(4, 0))
@@ -55,28 +56,19 @@ class SocietyDialog(ctk.CTkToplevel):
     def _buttons(self, parent: ctk.CTkFrame, row: int) -> None:
         bar = ctk.CTkFrame(parent, fg_color="transparent")
         bar.grid(row=row, column=0, columnspan=2, sticky="e", padx=16, pady=16)
-        ctk.CTkButton(
-            bar, text="Cancelar", width=100, fg_color=Palette.MUTED, hover_color=Palette.TEXT, command=self.destroy
-        ).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(
-            bar,
-            text="Guardar",
-            width=120,
-            fg_color=Palette.PRIMARY,
-            hover_color=Palette.PRIMARY_HOVER,
-            command=self._save,
-        ).pack(side="left")
+        muted_button(bar, "Cancelar", self.destroy, width=100).pack(side="left", padx=(0, 8))
+        primary_button(bar, "Guardar", self._save, width=120).pack(side="left")
 
     def _save(self) -> None:
         try:
             self.result = SocietyMapping(
                 cuit=self._cuit.get().strip(),
                 name=self._name.get().strip(),
-                trade_name=self._fantasia.get().strip() or None,
+                trade_name=self._trade_name.get().strip() or None,
                 aliases=_parse_aliases(self._aliases.get()),
             )
         except ValidationError as exc:
-            self._error.configure(text=_first_error(exc))
+            self._error.configure(text=first_validation_error(exc))
             return
         self.destroy()
 
@@ -86,10 +78,3 @@ class SocietyDialog(ctk.CTkToplevel):
 
 def _parse_aliases(raw: str) -> tuple[str, ...]:
     return tuple(alias.strip() for alias in raw.split(_ALIAS_SEPARATOR) if alias.strip())
-
-
-def _first_error(exc: ValidationError) -> str:
-    error = exc.errors()[0]
-    field = error["loc"][0] if error["loc"] else ""
-    message = str(error["msg"]).removeprefix("Value error, ")
-    return f"{field}: {message}"

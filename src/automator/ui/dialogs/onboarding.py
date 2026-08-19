@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog
 
 import customtkinter as ctk
 from pydantic import ValidationError
 
 from automator.config import QUARANTINE_FOLDER_NAME, UNKNOWN_FOLDER_NAME, AppConfig, SocietyMapping
+from automator.ui.pickers import ask_folder
+from automator.ui.presentation import format_validation_error
 from automator.ui.theme import CORNER_RADIUS, Palette
-from automator.ui.widgets import make_modal
+from automator.ui.widgets import make_modal, muted_button, path_button, primary_button
 
 
 class OnboardingDialog(ctk.CTkToplevel):
@@ -73,30 +74,27 @@ class OnboardingDialog(ctk.CTkToplevel):
             row=0, column=0, columnspan=2, sticky="w"
         )
         ctk.CTkEntry(frame, textvariable=var).grid(row=1, column=0, sticky="ew", pady=(4, 0))
-        ctk.CTkButton(frame, text="Elegir", width=80, command=lambda: self._pick(var)).grid(
-            row=1, column=1, padx=(8, 0), pady=(4, 0)
-        )
+        path_button(frame, "Elegir", lambda: self._pick(var)).grid(row=1, column=1, padx=(8, 0), pady=(4, 0))
 
     def _buttons(self, parent: ctk.CTkFrame, row: int) -> None:
         bar = ctk.CTkFrame(parent, fg_color="transparent")
         bar.grid(row=row, column=0, sticky="e", padx=20, pady=16)
-        ctk.CTkButton(
-            bar, text="Lo hago despues", fg_color=Palette.MUTED, hover_color=Palette.TEXT, command=self.destroy
-        ).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(
-            bar, text="Empezar", fg_color=Palette.PRIMARY, hover_color=Palette.PRIMARY_HOVER, command=self._finish
-        ).pack(side="left")
+        muted_button(bar, "Lo hago despues", self.destroy).pack(side="left", padx=(0, 8))
+        primary_button(bar, "Empezar", self._finish).pack(side="left")
 
     def _pick(self, var: tk.StringVar) -> None:
-        chosen = filedialog.askdirectory(parent=self, title="Elegi una carpeta")
-        if chosen:
-            var.set(chosen)
+        chosen = ask_folder(self, title="Elegi una carpeta")
+        if chosen is not None:
+            var.set(str(chosen))
 
     def _finish(self) -> None:
+        if not self._input.get().strip() or not self._output.get().strip():
+            self._error.configure(text="La carpeta de entrada y la de salida son obligatorias.")
+            return
         try:
             self.result = self._build_config()
         except ValidationError as exc:
-            self._error.configure(text=exc.errors()[0]["msg"])
+            self._error.configure(text=format_validation_error(exc))
             return
         self.destroy()
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from automator.domain.suppliers import Supplier, SupplierRegistry
+from automator.domain.suppliers import Supplier, SupplierRegistry, merge_supplier
 
 
 def _supplier(cuit: str, legal_name: str, **extra: object) -> Supplier:
@@ -26,7 +26,7 @@ def test_supplier_rejects_bad_check_digit() -> None:
         _supplier("30999999990", "X")
 
 
-def test_supplier_rejects_empty_razon_social() -> None:
+def test_supplier_rejects_empty_legal_name() -> None:
     with pytest.raises(ValidationError):
         _supplier("30999999995", "   ")
 
@@ -86,6 +86,32 @@ def test_shared_alias_does_not_guess_a_supplier() -> None:
         ]
     )
     assert registry.match("Factura ACME SA total 100", exclude_cuits=set()) is None
+
+
+def test_name_fallback_skipped_when_unknown_cuit_is_present() -> None:
+    registry = SupplierRegistry([_supplier("30999999995", "Distribuidora Nordica SA")])
+    text = "CUIT 30-70773021-4 Proveedor: DISTRIBUIDORA NORDICA SA"
+    assert registry.match(text, exclude_cuits=set()) is None
+
+
+def test_name_fallback_excludes_buyer_supplier() -> None:
+    registry = SupplierRegistry(
+        [
+            _supplier("30111111118", "Distribuidora Nordica SA"),
+            _supplier("30999999995", "Otra Firma Distinta SA"),
+        ]
+    )
+    assert registry.match("Proveedor: DISTRIBUIDORA NORDICA SA", exclude_cuits={"30111111118"}) is None
+
+
+def test_merge_supplier_keeps_previous_legal_name_as_alias() -> None:
+    existing = _supplier("30999999995", "Nombre Viejo SA", trade_name="Viejo")
+    incoming = _supplier("30999999995", "Nombre Nuevo SA", trade_name="Nuevo")
+    merged = merge_supplier(existing, incoming)
+    assert merged.legal_name == "Nombre Nuevo SA"
+    assert "Nombre Viejo SA" in merged.extra_aliases
+    assert "Viejo" in merged.extra_aliases
+    assert merged.trade_name == "Nuevo"
 
 
 def test_short_alias_does_not_match_every_invoice() -> None:

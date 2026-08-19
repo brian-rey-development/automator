@@ -7,12 +7,13 @@ import sqlite3
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
 
 from automator.services.excel_import import ExcelReadError, MissingColumnError, parse_suppliers, read_rows
 from automator.services.supplier_store import SupplierRegistryStore, SupplierStore
 from automator.ui import system_utils
 from automator.ui.dialogs.import_report_dialog import ImportReportDialog
+from automator.ui.pickers import ask_excel
 from automator.ui.system_utils import UiMailbox
 from automator.ui.views.settings import SettingsView
 
@@ -47,10 +48,10 @@ class SuppliersController:
         if self._store is None or self._registry is None:
             messagebox.showerror("Proveedores", "El registro de proveedores no esta disponible.")
             return
-        path = filedialog.askopenfilename(title="Elegi el Excel", filetypes=[("Excel", "*.xlsx")])
-        if not path:
+        path = ask_excel(self._widget)
+        if path is None:
             return
-        system_utils.run_async(lambda: self._import_from(Path(path)))
+        system_utils.run_async(lambda: self._import_from(path))
 
     def clear_suppliers(self) -> None:
         if self._store is None or self._registry is None:
@@ -63,6 +64,8 @@ class SuppliersController:
 
     def remove_supplier(self, cuit: str) -> None:
         if self._store is None or self._registry is None:
+            return
+        if not messagebox.askyesno("Eliminar proveedor", f"Se elimina el CUIT {cuit} del registro. Continuar?"):
             return
         self._store.delete(cuit)
         self._registry.reload()

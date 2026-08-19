@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import logging
 import queue
-import sqlite3
 
 import customtkinter as ctk
 
-from automator.config import ConfigStore, ledger_path
+from automator.config import ConfigStore
 from automator.services.engine import EngineEvent, ProcessingEngine
-from automator.services.ledger import Ledger
-from automator.services.supplier_store import SupplierRegistryStore, SupplierStore
+from automator.services.supplier_store import SupplierRegistryStore
 from automator.ui import system_utils
+from automator.ui.backend import close_stores, open_ledger, open_supplier_store
 from automator.ui.controllers.engine_bridge import EngineBridge
 from automator.ui.controllers.history_actions import HistoryActions
 from automator.ui.controllers.pending import PendingController
@@ -48,6 +47,7 @@ class MainWindow(ctk.CTkFrame):
         self._boot(first_run)
 
     def _show(self, key: str) -> None:
+        self._current = key
         for name, view in self._views.items():
             if name == key:
                 view.grid(row=0, column=0, sticky="nsew", padx=28, pady=24)
@@ -67,10 +67,11 @@ class MainWindow(ctk.CTkFrame):
         self._await_close()
 
     def _init_backend(self) -> None:
+        self._current = "monitor"
         self._mailbox = system_utils.UiMailbox()
         self._events: queue.Queue[EngineEvent] = queue.Queue()
-        self._ledger = _open_ledger()
-        self._supplier_store = _open_supplier_store()
+        self._ledger = open_ledger()
+        self._supplier_store = open_supplier_store()
         registry = SupplierRegistryStore(self._supplier_store) if self._supplier_store else None
         self._registry_store = registry
         provider = registry.get if registry else None
@@ -132,8 +133,6 @@ class MainWindow(ctk.CTkFrame):
             on_search_suppliers=lambda: self._suppliers.refresh(),
             on_open_logs=lambda: self._settings_form.open_logs(),
             on_pick=lambda var: self._settings_form.pick_folder(var),
-            on_open_input=lambda: self._settings_form.open_input(),
-            on_open_output=lambda: self._settings_form.open_output(),
             on_open=lambda var: self._settings_form.open_folder_var(var),
         )
 
@@ -143,17 +142,33 @@ class MainWindow(ctk.CTkFrame):
         self._suppliers = SuppliersController(
             self._supplier_store, self._registry_store, self._config_view, self, mailbox
         )
-        self._history_actions = HistoryActions(self._ledger, self._engine, self._store, self._history_view, self)
         self._engine_bridge = EngineBridge(
             self._engine, self._events, self._monitor_view, self._sidebar, self._settings_form, self, mailbox
+        )
+        self._history_actions = HistoryActions(
+            self._ledger,
+            self._engine,
+            self._store,
+            self._history_view,
+            self,
+            self._settings_form.collect_and_save,
+            self._engine_bridge.start,
+            mailbox,
         )
         self._pending = PendingController(self._store, self._monitor_view, self)
         self._settings_form.bind_monitor(
             lambda: self._engine.is_running, self._engine_bridge.start, self._engine_bridge.stop
         )
+        self._engine_bridge.require_ledger(self._ledger is not None)
         self._engine_bridge.on_running_changed = self._history_actions.update_actions
+        self._engine_bridge.on_started = self._history_actions.on_engine_started
+        self._engine_bridge.on_result = self._refresh_history_if_visible
         self._history_actions.on_cleared = self._engine_bridge.reset_session_stats
         self._pending.on_count = self._history_actions.set_pending
+
+    def _refresh_history_if_visible(self) -> None:
+        if self._current == "history":
+            self._history_actions.refresh()
 
     def _run_onboarding(self) -> None:
         dialog = OnboardingDialog(self, self._store.get())
@@ -172,27 +187,5 @@ class MainWindow(ctk.CTkFrame):
         if self._engine.is_running:
             logger.warning("El motor sigue activo; se cierra la ventana sin cerrar el historial")
         else:
-            self._close_stores()
+            close_stores(self._ledger, self._supplier_store)
         self.winfo_toplevel().destroy()
-
-    def _close_stores(self) -> None:
-        if self._ledger is not None:
-            self._ledger.close()
-        if self._supplier_store is not None:
-            self._supplier_store.close()
-
-
-def _open_ledger() -> Ledger | None:
-    try:
-        return Ledger(ledger_path())
-    except (OSError, sqlite3.Error):
-        logger.exception("No se pudo abrir el historial; se continua sin el")
-        return None
-
-
-def _open_supplier_store() -> SupplierStore | None:
-    try:
-        return SupplierStore(ledger_path())
-    except (OSError, sqlite3.Error):
-        logger.exception("No se pudo abrir el registro de proveedores; se continua sin el")
-        return None

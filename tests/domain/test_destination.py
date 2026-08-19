@@ -50,3 +50,9 @@ def test_unknown_template_token_does_not_raise() -> None:
     base = Path("/salida/EMPRESA")
     result = destination_dir(_invoice("ACME S.A."), base, "{supplier}/{unknown}")
     assert result == base / "ACME S.A"
+
+
+def test_society_token_uses_base_folder_name() -> None:
+    base = Path("/salida/EMPRESA")
+    result = destination_dir(_invoice("ACME S.A."), base, "{society}/{supplier}")
+    assert result == base / "EMPRESA" / "ACME S.A"

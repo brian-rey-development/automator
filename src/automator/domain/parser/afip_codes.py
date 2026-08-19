@@ -6,7 +6,7 @@ import re
 
 from automator.domain.models import Voucher, VoucherKind
 
-_DEFAULT_LETTER = "A"
+DEFAULT_LETTER = "A"
 _CODE_PATTERN = re.compile(r"\bC[oó]d(?:igo)?\.?\s*(\d{1,3})(?!\d)", re.IGNORECASE)
 _KIND_PATTERNS: tuple[tuple[re.Pattern[str], VoucherKind], ...] = (
     (re.compile(r"NOTA\s+DE\s+CR[EÉ]DITO", re.IGNORECASE), VoucherKind.CREDIT_NOTE),
@@ -41,7 +41,7 @@ def detect_voucher(text: str) -> Voucher:
     if by_code is not None:
         return by_code
     kind = _detect_kind(text) or VoucherKind.INVOICE
-    letter = _detect_letter(text) or _DEFAULT_LETTER
+    letter = _detect_letter(text) or DEFAULT_LETTER
     return Voucher(kind, letter)
 
 

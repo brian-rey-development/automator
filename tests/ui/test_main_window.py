@@ -18,11 +18,22 @@ from automator.config import AppConfig, ConfigStore, SocietyMapping
 from automator.domain.models import ProcessOutcome, ProcessResult
 from automator.domain.suppliers import Supplier
 from automator.services.engine import EngineEvent, EngineEventType
-from automator.ui import shell, system_utils
+from automator.ui import backend as backend_mod
+from automator.ui import system_utils
 from automator.ui.controllers import history_actions as history_actions_mod
 from automator.ui.controllers import settings_form as settings_form_mod
 from automator.ui.controllers import suppliers as suppliers_mod
 from automator.ui.shell import MainWindow
+
+
+def _button(parent: ctk.CTkFrame, text: str) -> ctk.CTkButton:
+    stack = list(parent.winfo_children())
+    while stack:
+        child = stack.pop()
+        if isinstance(child, ctk.CTkButton) and str(child.cget("text")) == text:
+            return child
+        stack.extend(child.winfo_children())
+    raise AssertionError(f"button {text!r} not found")
 
 
 def _config(tmp_path: Path) -> AppConfig:
@@ -37,7 +48,7 @@ def _config(tmp_path: Path) -> AppConfig:
 
 @pytest.fixture
 def window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[MainWindow]:
-    monkeypatch.setattr(shell, "ledger_path", lambda: tmp_path / "history.db")
+    monkeypatch.setattr(backend_mod, "ledger_path", lambda: tmp_path / "history.db")
     monkeypatch.setattr(system_utils, "run_async", lambda fn: fn())
     try:
         root = ctk.CTk()
@@ -73,7 +84,8 @@ def test_window_builds_and_switches_views(window: MainWindow) -> None:
     assert window._history_view.winfo_manager() == ""
 
 
-def test_society_rows_add_and_remove(window: MainWindow) -> None:
+def test_society_rows_add_and_remove(window: MainWindow, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings_form_mod.messagebox, "askyesno", lambda *_args, **_kwargs: True)
     window._settings_form.societies = [SocietyMapping(cuit="30111111118", name="EMPRESA UNA")]
     window._settings_form.refresh_societies()
     window.update_idletasks()
@@ -114,7 +126,7 @@ def test_import_suppliers_updates_registry(window: MainWindow, tmp_path: Path, m
     workbook.active.append(["CUIT", "Razón Social"])
     workbook.active.append(["30-99999999-5", "Nordica SA"])
     workbook.save(path)
-    monkeypatch.setattr(suppliers_mod.filedialog, "askopenfilename", lambda **_kwargs: str(path))
+    monkeypatch.setattr(suppliers_mod, "ask_excel", lambda _parent=None: path)
     monkeypatch.setattr(suppliers_mod, "ImportReportDialog", lambda *_args, **_kwargs: None)
 
     window._suppliers.import_suppliers()
@@ -131,7 +143,7 @@ def test_import_societies_adds_to_list(window: MainWindow, tmp_path: Path, monke
     workbook.active.append(["CUIT", "Razón Social"])
     workbook.active.append(["30-11111111-8", "Compradora Uno SA"])
     workbook.save(path)
-    monkeypatch.setattr(settings_form_mod.filedialog, "askopenfilename", lambda **_kwargs: str(path))
+    monkeypatch.setattr(settings_form_mod, "ask_excel", lambda _parent=None: path)
     monkeypatch.setattr(settings_form_mod, "ImportReportDialog", lambda *_args, **_kwargs: None)
 
     window._settings_form.import_societies()
@@ -221,3 +233,41 @@ def test_clear_history_resets_session_counters(window: MainWindow, monkeypatch: 
     window._history_actions.clear_history()
 
     assert window._engine_bridge.counts == {"detected": 0, "archived": 0, "review": 0, "error": 0}
+
+
+def test_wired_buttons_invoke_their_controllers(window: MainWindow, monkeypatch: pytest.MonkeyPatch) -> None:
+    toggled: list[str] = []
+    saved: list[str] = []
+    added: list[str] = []
+    reviewed: list[str] = []
+    monkeypatch.setattr(window._engine_bridge, "toggle", lambda: toggled.append("ok"))
+    monkeypatch.setattr(window._settings_form, "save_config", lambda: saved.append("ok"))
+    monkeypatch.setattr(window._settings_form, "add_society", lambda: added.append("ok"))
+    monkeypatch.setattr(window._pending, "open_review", lambda: reviewed.append("ok"))
+
+    window._monitor_view.toggle_btn.invoke()
+    _button(window._config_view, "Guardar").invoke()
+    _button(window._config_view, "+  Agregar empresa").invoke()
+    window._monitor_view.set_pending(2)
+    _button(window._monitor_view.pending_banner, "Abrir pendientes").invoke()
+    window._sidebar._nav_items["config"][1].invoke()
+    window.update_idletasks()
+
+    assert toggled == ["ok"]
+    assert saved == ["ok"]
+    assert added == ["ok"]
+    assert reviewed == ["ok"]
+    assert window._monitor_view.winfo_manager() == ""
+    assert window._history_view.winfo_manager() == ""
+
+
+def test_history_toolbar_buttons_call_actions(window: MainWindow, monkeypatch: pytest.MonkeyPatch) -> None:
+    retried: list[int] = []
+    monkeypatch.setattr(window._engine, "start", lambda: None)
+    monkeypatch.setattr(window._engine, "reprocess_pending", lambda: retried.append(1) or 1)
+    monkeypatch.setattr(history_actions_mod.messagebox, "showinfo", lambda *_args, **_kwargs: None)
+    window._history_actions.set_pending(1)
+    window._history_view.retry_btn.invoke()
+    window._history_actions.on_engine_started()
+    _button(window._history_view, "⟳  Actualizar").invoke()
+    assert retried == [1]

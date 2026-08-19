@@ -15,6 +15,7 @@ _INCOMPLETE = "Datos incompletos: se envio a revision manual."
 _DUPLICATE = "Duplicado: ya se habia archivado este documento antes."
 _UNCLASSIFIED = "Archivado sin clasificar: no se detecto la sociedad compradora."
 _MOVED = "Archivado correctamente."
+_FUZZY = "Emparejada por nombre ({percent}%): se envio a revision para confirmar la compradora."
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,15 +46,16 @@ def decide_filing(
         return FilingDecision(ProcessOutcome.NEEDS_REVIEW, folders.review, _INCOMPLETE)
     if is_duplicate:
         return FilingDecision(ProcessOutcome.DUPLICATE, folders.duplicates, _DUPLICATE)
-    outcome, message = _archive_choice(invoice, buyer)
+    if buyer.fuzzy:
+        message = _FUZZY.format(percent=round(buyer.score * 100))
+        return FilingDecision(ProcessOutcome.NEEDS_REVIEW, folders.review, message)
+    outcome, message = _archive_choice(buyer)
     return FilingDecision(outcome, folders.archive, message)
 
 
-def _archive_choice(invoice: ParsedInvoice, buyer: BuyerResolution) -> tuple[ProcessOutcome, str]:
+def _archive_choice(buyer: BuyerResolution) -> tuple[ProcessOutcome, str]:
     if buyer.cuit is None:
         return ProcessOutcome.UNCLASSIFIED, _UNCLASSIFIED
-    if buyer.fuzzy:
-        return ProcessOutcome.MOVED, f"Archivado (sociedad emparejada por nombre, {round(buyer.score * 100)}%)."
     return ProcessOutcome.MOVED, _MOVED
 
 

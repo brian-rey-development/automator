@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from pathlib import Path
 
+from automator.config import ConfigProvider
 from automator.domain.models import ProcessOutcome
-from automator.services.engine.events import ConfigProvider
+from automator.services.file_ops import file_signature
 from automator.services.ledger import Ledger
 
 logger = logging.getLogger(__name__)
@@ -28,11 +28,7 @@ _REMEMBERED = _COPY_PLACED | frozenset({ProcessOutcome.DRY_RUN})
 
 
 def source_signature(path: Path) -> str | None:
-    try:
-        stat = path.stat()
-    except OSError:
-        return None
-    return f"{os.path.abspath(path)}|{stat.st_size}|{int(stat.st_mtime)}"
+    return file_signature(path)
 
 
 class SourceMemory:
@@ -56,9 +52,9 @@ class SourceMemory:
             with self._lock:
                 if signature in self._seen_signatures:
                     return True
-        if self._ledger is None or not self._config_provider().copy_files:
+        if signature is None or self._ledger is None or not self._config_provider().copy_files:
             return False
-        return signature is not None and self._ledger.source_seen(signature)
+        return self._ledger.source_seen(signature)
 
     def remember(self, path: Path, outcome: ProcessOutcome) -> None:
         config = self._config_provider()

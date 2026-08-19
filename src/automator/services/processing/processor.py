@@ -7,7 +7,7 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-from automator.config import AppConfig
+from automator.config import AppConfig, ConfigProvider
 from automator.domain.buyer import BuyerResolution, resolve_buyer
 from automator.domain.filenames import build_filename
 from automator.domain.filing import FilingDecision, FilingFolders, archive_base, decide_filing, destination_dir
@@ -21,7 +21,6 @@ from automator.services.processing.placement import place_file
 logger = logging.getLogger(__name__)
 
 TextExtractor = Callable[[Path], str]
-ConfigProvider = Callable[[], AppConfig]
 DuplicateCheck = Callable[[ParsedInvoice], bool]
 RegistryProvider = Callable[[], SupplierRegistry]
 
@@ -115,7 +114,7 @@ class InvoiceProcessor:
                 intended=decision.outcome,
             )
         try:
-            destination = place_file(source, target_dir, filename, copy_files=config.copy_files)
+            destination = place_file(source, target_dir, filename, copy_files=_copy_inbox_only(source, config))
         except Exception as exc:
             logger.exception("Fallo al archivar %s", source)
             return self._quarantine(source, config, f"No se pudo archivar: {exc}")
@@ -125,11 +124,27 @@ class InvoiceProcessor:
         if config.dry_run or not source.exists():
             return _result(source, ProcessOutcome.ERROR, None, None, message)
         try:
-            destination = place_file(source, config.quarantine_folder, source.name, copy_files=config.copy_files)
+            destination = place_file(
+                source, config.quarantine_folder, source.name, copy_files=_copy_inbox_only(source, config)
+            )
         except Exception:
             logger.exception("No se pudo poner en cuarentena %s; queda en la carpeta de entrada para reintento", source)
             return _result(source, ProcessOutcome.ERROR, None, None, message)
         return _result(source, ProcessOutcome.QUARANTINED, destination, None, message)
+
+
+def _copy_inbox_only(source: Path, config: AppConfig) -> bool:
+    if not config.copy_files:
+        return False
+    return not any(_is_under(source, folder) for folder in (config.review_folder, config.quarantine_folder))
+
+
+def _is_under(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+    except (ValueError, OSError):
+        return False
+    return True
 
 
 def _result(

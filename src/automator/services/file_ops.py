@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 _STABILITY_POLL_INTERVAL_S = 0.4
@@ -15,8 +16,20 @@ _LONG_PATH_UNC_PREFIX = "\\\\?\\UNC\\"
 
 
 def is_pdf(path: Path) -> bool:
-    """True if the file has a .pdf extension (case-insensitive)."""
     return path.suffix.lower() == ".pdf"
+
+
+def list_pdfs(folder: Path, *, recursive: bool = False) -> list[Path]:
+    paths = folder.rglob("*") if recursive else folder.iterdir()
+    return sorted(path for path in paths if path.is_file() and is_pdf(path))
+
+
+def file_signature(path: Path) -> str | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return f"{os.path.abspath(path)}|{stat.st_size}|{int(stat.st_mtime)}"
 
 
 def wait_until_stable(
@@ -59,33 +72,20 @@ def unique_destination(path: Path) -> Path:
 
 
 def move_file(source: Path, target_dir: Path, filename: str) -> Path:
-    """Moves the file to the target folder avoiding overwrites.
-
-    Uses shutil.move to support moves across different disks (C: to network).
-    The worker is single and sequential, so there is no real race between the
-    destination calculation and the move.
-    """
-    target_dir.mkdir(parents=True, exist_ok=True)
-    desired = target_dir / filename
-    if _already_at(source, desired):
-        return source
-    target = unique_destination(desired)
-    shutil.move(_os_path(source), _os_path(target))
-    return target
+    return _transfer(source, target_dir, filename, shutil.move)
 
 
 def copy_file(source: Path, target_dir: Path, filename: str) -> Path:
-    """Copies the file to the target folder avoiding overwrites.
+    return _transfer(source, target_dir, filename, shutil.copy2)
 
-    Leaves the original intact. copy2 preserves the file dates, so the signature
-    the engine uses to avoid reprocessing stays stable.
-    """
+
+def _transfer(source: Path, target_dir: Path, filename: str, op: Callable[[str, str], object]) -> Path:
     target_dir.mkdir(parents=True, exist_ok=True)
     desired = target_dir / filename
     if _already_at(source, desired):
         return source
     target = unique_destination(desired)
-    shutil.copy2(_os_path(source), _os_path(target))
+    op(_os_path(source), _os_path(target))
     return target
 
 

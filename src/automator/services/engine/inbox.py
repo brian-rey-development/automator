@@ -9,25 +9,16 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from automator.services.engine.events import ConfigProvider, EngineEvent, EngineEventType, EventSink
+from automator.config import ConfigProvider
+from automator.services.engine.events import EngineEvent, EngineEventType, EventSink
 from automator.services.engine.source_memory import SourceMemory
-from automator.services.file_ops import is_pdf
+from automator.services.file_ops import list_pdfs
+
+__all__ = ["Inbox", "list_pdfs", "path_key"]
 
 logger = logging.getLogger(__name__)
 
 QueueGetter = Callable[[], queue.Queue[object]]
-
-
-def list_pdfs(folder: Path, *, recursive: bool = False) -> list[Path]:
-    """Lists the PDFs in a folder, case-insensitive on the extension.
-
-    Recurses when asked: review and quarantine files are filed under a per-supplier
-    subfolder, so retrying them requires descending into those subfolders.
-    Propagates OSError on purpose: if the folder cannot be read, the engine must
-    notify the user, not stay silent processing an empty list.
-    """
-    paths = folder.rglob("*") if recursive else folder.iterdir()
-    return sorted(path for path in paths if path.is_file() and is_pdf(path))
 
 
 def path_key(path: Path) -> Path:
@@ -49,9 +40,11 @@ class Inbox:
         self._config_provider = config_provider
         self._get_queue = get_queue
         self._inflight: set[Path] = set()
+        self._input_unreadable = False
 
     def clear(self) -> None:
         self._inflight = set()
+        self._input_unreadable = False
 
     def enqueue(self, path: Path) -> None:
         if self._memory.already_processed(path) or not self.reserve(path):
@@ -101,3 +94,15 @@ class Inbox:
         for path in pdfs:
             self.requeue(path)
         return len(pdfs)
+
+    def rescan(self) -> None:
+        try:
+            paths = list_pdfs(self._config_provider().input_folder)
+        except OSError as exc:
+            if not self._input_unreadable:
+                self._input_unreadable = True
+                self._emit(EngineEvent(EngineEventType.ERROR, f"No se puede leer la carpeta de entrada: {exc}"))
+            return
+        self._input_unreadable = False
+        for path in paths:
+            self.requeue(path)

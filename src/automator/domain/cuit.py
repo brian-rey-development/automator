@@ -8,6 +8,9 @@ single place.
 from __future__ import annotations
 
 import re
+from typing import Annotated
+
+from pydantic import AfterValidator
 
 CUIT_LENGTH = 11
 _TYPE_LENGTH = 2  # Leading "type" block (20, 27, 30, ...); never zero-padded.
@@ -56,5 +59,24 @@ def is_valid_cuit(digits: str) -> bool:
 
 
 def extract_cuits(text: str) -> set[str]:
-    """Return the normalized 11-digit CUITs present in a text (no false substrings)."""
-    return {_SEPARATORS.sub("", token) for token in _CANDIDATE.findall(text)}
+    found = {_SEPARATORS.sub("", token) for token in _CANDIDATE.findall(text)}
+    return {digits for digits in found if is_valid_cuit(digits)}
+
+
+def unique_issuer_cuit(text: str, buyer_cuit: str | None) -> str | None:
+    leftover = extract_cuits(text)
+    if buyer_cuit:
+        leftover.discard(buyer_cuit)
+    return next(iter(leftover)) if len(leftover) == 1 else None
+
+
+def require_valid_cuit(value: str) -> str:
+    digits = coerce_cuit(value)
+    if len(digits) != CUIT_LENGTH:
+        raise ValueError(f"El CUIT debe tener {CUIT_LENGTH} digitos: '{value}'")
+    if not is_valid_cuit(digits):
+        raise ValueError(f"El CUIT no es valido (digito verificador incorrecto): '{value}'")
+    return digits
+
+
+Cuit = Annotated[str, AfterValidator(require_valid_cuit)]

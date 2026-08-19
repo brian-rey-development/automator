@@ -84,7 +84,9 @@ def test_ensure_folders_creates_all_targets(tmp_path: Path) -> None:
         quarantine_folder=base / "_err",
         societies=[SocietyMapping(cuit="30111111118", name="A")],
     )
-    config.ensure_folders()
+    from automator.services.folders import ensure_folders
+
+    ensure_folders(config)
     for folder in config.all_folders():
         assert folder.is_dir()
 

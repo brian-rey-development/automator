@@ -56,7 +56,7 @@ cov: ## Ejecuta los tests con reporte de cobertura
 import-lint: ## Enforcea ui -> services -> domain
 	PYTHONPATH=src $(BIN)/lint-imports
 
-file-size: ## Falla si un modulo de produccion supera 250 lineas
+file-size: ## Falla si un modulo de produccion supera 200 lineas
 	$(PY) scripts/check_file_size.py
 
 check: lint format-check typecheck cov import-lint file-size ## Corre linting, tipos, tests con cobertura y contratos

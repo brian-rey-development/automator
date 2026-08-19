@@ -34,6 +34,7 @@ def test_parses_factura_a_completely() -> None:
     assert invoice.full_number == "0001-00000123"
     assert invoice.supplier == "PROVEEDOR EJEMPLO SRL"
     assert invoice.buyer_cuit == CUIT_ONE
+    assert invoice.issuer_cuit == "30999999995"
 
 
 def test_detects_credit_note_kind_and_letter() -> None:

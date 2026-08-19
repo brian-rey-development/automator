@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from automator.config.defaults import DUPLICATES_FOLDER_NAME, REVIEW_FOLDER_NAME
-from automator.domain.cuit import CUIT_LENGTH, coerce_cuit, is_valid_cuit
+from automator.config.defaults import (
+    DUPLICATES_FOLDER_NAME,
+    ORDERS_UNKNOWN_FOLDER_NAME,
+    REVIEW_FOLDER_NAME,
+    default_orders_folder,
+)
+from automator.domain.cuit import Cuit
 from automator.domain.filenames import sanitize_component
+from automator.domain.names import LegalName
 
 _MIN_STABILITY_TIMEOUT = 0.0
 _MAX_STABILITY_TIMEOUT = 120.0
 _TEMPLATE_TOKENS = {"supplier", "society", "year", "month", "day"}
-_ORDERS_NO_SOCIETY = "_SIN_SOCIEDAD"
 
 
 def _is_within(child: Path, parent: Path) -> bool:
@@ -34,27 +40,10 @@ class SocietyMapping(BaseModel):
 
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
-    cuit: str
-    name: str
+    cuit: Cuit
+    name: LegalName
     trade_name: str | None = Field(default=None, validation_alias=AliasChoices("trade_name", "nombre_fantasia"))
     aliases: tuple[str, ...] = ()
-
-    @field_validator("cuit")
-    @classmethod
-    def _normalize_cuit(cls, value: str) -> str:
-        digits = coerce_cuit(value)
-        if len(digits) != CUIT_LENGTH:
-            raise ValueError(f"El CUIT debe tener {CUIT_LENGTH} digitos: '{value}'")
-        if not is_valid_cuit(digits):
-            raise ValueError(f"El CUIT no es valido (digito verificador incorrecto): '{value}'")
-        return digits
-
-    @field_validator("name")
-    @classmethod
-    def _name_not_empty(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("La razon social no puede estar vacia.")
-        return value.strip()
 
     def match_names(self) -> tuple[str, ...]:
         extra = (self.trade_name,) if self.trade_name else ()
@@ -75,7 +64,7 @@ class AppConfig(BaseModel):
     destination_template: str = "{supplier}"
     notify: bool = True
     copy_files: bool = False
-    orders_folder: Path = Field(default_factory=lambda: Path.home() / "Automator" / "Ordenes de compra")
+    orders_folder: Path = Field(default_factory=default_orders_folder)
 
     @model_validator(mode="after")
     def _reject_duplicate_cuits(self) -> AppConfig:
@@ -115,9 +104,6 @@ class AppConfig(BaseModel):
     def known_cuits(self) -> list[str]:
         return [society.cuit for society in self.societies]
 
-    def society_names(self) -> set[str]:
-        return {society.name.casefold() for society in self.societies}
-
     def society_for_cuit(self, cuit: str | None) -> SocietyMapping | None:
         if cuit is None:
             return None
@@ -133,7 +119,7 @@ class AppConfig(BaseModel):
 
     def orders_base_for(self, cuit: str | None) -> Path:
         society = self.society_for_cuit(cuit)
-        name = society.name if society is not None else _ORDERS_NO_SOCIETY
+        name = society.name if society is not None else ORDERS_UNKNOWN_FOLDER_NAME
         return self.orders_folder / sanitize_component(name)
 
     def all_folders(self) -> list[Path]:
@@ -149,7 +135,5 @@ class AppConfig(BaseModel):
         folders.extend(self.society_folder(society) for society in self.societies)
         return folders
 
-    def ensure_folders(self) -> None:
-        from automator.services.folders import ensure_folders as create_folders
 
-        create_folders(self)
+ConfigProvider = Callable[[], AppConfig]

@@ -11,19 +11,9 @@ import customtkinter as ctk
 
 from automator.config import SocietyMapping
 from automator.domain.suppliers import Supplier
-from automator.ui.presentation import format_cuit
 from automator.ui.theme import CORNER_RADIUS, Fonts, Palette
-from automator.ui.widgets import (
-    card_body,
-    checkbox,
-    entity_row,
-    folder_field,
-    ghost_button,
-    hint,
-    path_button,
-    primary_button,
-    template_field,
-)
+from automator.ui.views.settings_entities import build_societies, build_suppliers, fill_societies, fill_suppliers
+from automator.ui.widgets import card_body, checkbox, folder_field, ghost_button, hint, primary_button, template_field
 
 
 @dataclass(frozen=True)
@@ -39,8 +29,6 @@ class SettingsHooks:
     on_search_suppliers: Callable[[], None]
     on_open_logs: Callable[[], None]
     on_pick: Callable[[tk.StringVar], None]
-    on_open_input: Callable[[], None]
-    on_open_output: Callable[[], None]
     on_open: Callable[[tk.StringVar], None]
 
 
@@ -64,23 +52,13 @@ class SettingsView(ctk.CTkScrollableFrame):
         self._advanced_btn.configure(text="Avanzado  ▸")
 
     def render_societies(self, societies: Sequence[SocietyMapping]) -> None:
-        for child in self.societies_list.winfo_children():
-            child.destroy()
-        if not societies:
-            hint(self.societies_list, "Todavia no agregaste ninguna empresa.", self._fonts.hint).grid(
-                row=0, column=0, sticky="w", pady=6
-            )
-            return
-        for index, society in enumerate(societies):
-            self._society_row(index, society)
+        fill_societies(self.societies_list, societies, self._fonts, self._hooks)
 
     def render_suppliers(self, suppliers: Sequence[Supplier], total: int) -> None:
-        for child in self.suppliers_list.winfo_children():
-            child.destroy()
-        self.supplier_count_var.set(f"{total} proveedores")
+        shown = len(suppliers)
+        self.supplier_count_var.set(f"Mostrando {shown} de {total}" if total else "0 proveedores")
         self.clear_suppliers_btn.configure(state="normal" if total > 0 else "disabled")
-        for index, supplier in enumerate(suppliers):
-            self._supplier_row(index, supplier)
+        fill_suppliers(self.suppliers_list, suppliers, self._fonts, self._hooks)
 
     def _init_vars(self) -> None:
         self.input_var = tk.StringVar()
@@ -114,92 +92,44 @@ class SettingsView(ctk.CTkScrollableFrame):
     def _build_folders(self) -> None:
         body = card_body(self, "Carpetas", "", 2, self._fonts)
         pick = self._hooks.on_pick
+        open_folder = self._hooks.on_open
         folder_field(
-            body, "Entrada", self.input_var, 0, self._fonts, lambda: pick(self.input_var), self._hooks.on_open_input
+            body,
+            "Entrada",
+            self.input_var,
+            0,
+            self._fonts,
+            lambda: pick(self.input_var),
+            lambda: open_folder(self.input_var),
         )
         folder_field(
-            body, "Salida", self.output_var, 1, self._fonts, lambda: pick(self.output_var), self._hooks.on_open_output
+            body,
+            "Salida",
+            self.output_var,
+            1,
+            self._fonts,
+            lambda: pick(self.output_var),
+            lambda: open_folder(self.output_var),
         )
 
     def _build_societies(self) -> None:
-        body = card_body(self, "Empresas", "Se archiva segun el CUIT de la compradora.", 3, self._fonts)
-        self.societies_list = ctk.CTkFrame(body, fg_color="transparent")
-        self.societies_list.grid(row=0, column=0, sticky="ew")
-        self.societies_list.grid_columnconfigure(0, weight=1)
-        self._society_buttons(body)
-
-    def _society_buttons(self, body: ctk.CTkFrame) -> None:
-        buttons = ctk.CTkFrame(body, fg_color="transparent")
-        buttons.grid(row=1, column=0, sticky="ew", pady=(12, 0))
-        buttons.grid_columnconfigure((0, 1), weight=1)
-        ctk.CTkButton(
-            buttons,
-            text="+  Agregar empresa",
-            height=40,
-            corner_radius=CORNER_RADIUS,
-            font=self._fonts.body,
-            fg_color=Palette.PRIMARY,
-            hover_color=Palette.PRIMARY_HOVER,
-            text_color="#ffffff",
-            command=self._hooks.on_add_society,
-        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        import_button = path_button(buttons, "Importar Excel", self._hooks.on_import_societies)
-        import_button.configure(height=40)
-        import_button.grid(row=0, column=1, sticky="ew")
-
-    def _society_row(self, index: int, society: SocietyMapping) -> None:
-        subtitle = f"CUIT {format_cuit(society.cuit)}"
-        if society.trade_name:
-            subtitle = f"{subtitle}   -   {society.trade_name}"
-        entity_row(
-            self.societies_list,
-            index,
-            society.name,
-            subtitle,
-            self._fonts,
-            self._fonts.h2,
-            partial(self._hooks.on_remove_society, index),
-            partial(self._hooks.on_edit_society, index),
-        )
+        self.societies_list = build_societies(self, self._fonts, self._hooks)
 
     def _build_suppliers(self) -> None:
-        body = card_body(
-            self, "Proveedores", "Se importan por Excel y ordenan cada factura por emisor.", 4, self._fonts
-        )
-        header = ctk.CTkFrame(body, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew")
-        header.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(header, textvariable=self.supplier_count_var, font=self._fonts.body, text_color=Palette.TEXT).grid(
-            row=0, column=0, sticky="w"
-        )
-        path_button(header, "Importar Excel", self._hooks.on_import_suppliers).grid(row=0, column=1, padx=(6, 0))
-        self.clear_suppliers_btn = path_button(header, "Vaciar", self._hooks.on_clear_suppliers)
-        self.clear_suppliers_btn.grid(row=0, column=2, padx=(6, 0))
-        search = ctk.CTkEntry(
-            body, textvariable=self.supplier_search_var, height=38, placeholder_text="Buscar proveedor..."
-        )
-        search.grid(row=1, column=0, sticky="ew", pady=(12, 8))
-        search.bind("<KeyRelease>", lambda _event: self._hooks.on_search_suppliers())
-        self.suppliers_list = ctk.CTkFrame(body, fg_color="transparent")
-        self.suppliers_list.grid(row=2, column=0, sticky="ew")
-        self.suppliers_list.grid_columnconfigure(0, weight=1)
-
-    def _supplier_row(self, index: int, supplier: Supplier) -> None:
-        entity_row(
-            self.suppliers_list,
-            index,
-            supplier.legal_name,
-            f"CUIT {format_cuit(supplier.cuit)}",
-            self._fonts,
-            self._fonts.body,
-            partial(self._hooks.on_remove_supplier, supplier.cuit),
+        self.suppliers_list, self.clear_suppliers_btn = build_suppliers(
+            self, self._fonts, self._hooks, self.supplier_count_var, self.supplier_search_var
         )
 
     def _build_options(self) -> None:
         body = card_body(self, "Comportamiento", "", 5, self._fonts)
         checkbox(body, "Simular (no mueve archivos)", self.dry_run_var, 0, self._fonts.body)
         checkbox(body, "Copiar en vez de mover", self.copy_var, 1, self._fonts.body)
-        checkbox(body, "Notificar cuando hay pendientes", self.notify_var, 2, self._fonts.body)
+        hint(
+            body,
+            "El original queda en Entrada. Deshacer devuelve la copia archivada.",
+            self._fonts.hint,
+        ).grid(row=2, column=0, sticky="w", pady=(0, 8))
+        checkbox(body, "Notificar cuando hay pendientes", self.notify_var, 3, self._fonts.body)
 
     def _build_advanced(self) -> None:
         wrap = ctk.CTkFrame(self, fg_color="transparent")

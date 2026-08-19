@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from automator.config import SocietyMapping
+from dataclasses import dataclass
+
 from automator.domain.buyer import resolve_buyer
 from automator.domain.models import DocumentType, ParsedInvoice, Voucher, VoucherKind
 from fixtures.invoices import CUIT_ONE, CUIT_TWO
@@ -21,8 +22,18 @@ def _order(buyer_cuit: str | None = None, buyer_name: str | None = None, ambiguo
     )
 
 
-def _society(cuit: str, name: str, trade_name: str | None = None, aliases: tuple[str, ...] = ()) -> SocietyMapping:
-    return SocietyMapping(cuit=cuit, name=name, trade_name=trade_name, aliases=aliases)
+@dataclass(frozen=True)
+class _Society:
+    cuit: str
+    names: tuple[str, ...]
+
+    def match_names(self) -> tuple[str, ...]:
+        return self.names
+
+
+def _society(cuit: str, name: str, trade_name: str | None = None, aliases: tuple[str, ...] = ()) -> _Society:
+    extra = (trade_name,) if trade_name else ()
+    return _Society(cuit, (name, *extra, *aliases))
 
 
 def test_exact_cuit_wins() -> None:
@@ -56,7 +67,7 @@ def test_fuzzy_matches_via_alias() -> None:
     assert resolution.fuzzy
 
 
-def test_fuzzy_matches_via_nombre_fantasia() -> None:
+def test_fuzzy_matches_via_trade_name() -> None:
     societies = [
         _society(CUIT_ONE, "COMPRADORA UNO SA", trade_name="Compradora Uno"),
         _society(CUIT_TWO, "TOTALMENTE DISTINTA SRL"),

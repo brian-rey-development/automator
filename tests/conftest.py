@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from automator.config import AppConfig, SocietyMapping
+from automator.config import QUARANTINE_FOLDER_NAME, UNKNOWN_FOLDER_NAME, AppConfig, SocietyMapping
 from fixtures.invoices import CUIT_ONE
 
 
@@ -24,8 +24,8 @@ def make_config(tmp_path: Path) -> Callable[..., AppConfig]:
         config = AppConfig(
             input_folder=tmp_path / "entrada",
             base_output_folder=base,
-            unknown_folder=base / "_SIN_CLASIFICAR",
-            quarantine_folder=base / "_ERRORES",
+            unknown_folder=base / UNKNOWN_FOLDER_NAME,
+            quarantine_folder=base / QUARANTINE_FOLDER_NAME,
             orders_folder=tmp_path / "ordenes",
             societies=[
                 SocietyMapping(cuit=CUIT_ONE, name="COMPRADORA UNO SA"),

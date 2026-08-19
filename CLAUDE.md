@@ -99,18 +99,20 @@ Paths resolved in `paths.py` (`config_path`, `ledger_path`, `log_dir`, `assets_d
   stable source signature (path, size, mtime) in the ledger to avoid reprocessing.
 - Windows: long-path prefix and the `\\?\UNC\` form for network paths (`file_ops`).
 - The parser never raises: on unexpected text it returns deterministic defaults.
-- Duplicate detection uses the identity `supplier|number|type` against the ledger
-  and, when present, `(issuer_cuit, number, type_label)`. Only MOVED/UNCLASSIFIED
-  results count as "already filed".
-- Fuzzy buyer matching (threshold 0.90, margin 0.05) files as MOVED with an
-  auditable message. It is a product decision, not a guess of the runner-up.
+- Duplicate detection uses `normalize_name(supplier)|number|type` against the
+  ledger and, when present, the exact `issuer_cuit|number|type` key. Only
+  MOVED/UNCLASSIFIED results count as already filed.
+- Fuzzy buyer matching (threshold 0.90, margin 0.05) goes to review. It never
+  files under a guessed company.
+- Copy-mode undo forgets the source signature so the original can be processed
+  again.
 
 ## Structure
 
 ```
 src/automator/
   config/           AppConfig, store, folder name defaults
-  domain/           parser, filing, parties, models
+  domain/           parser, filing, models, buyer, suppliers
   services/         engine/, processing/, persistence/, IO
   ui/               shell, views, controllers, widgets, dialogs
   paths.py          config/data/log/assets locations
@@ -118,6 +120,6 @@ tests/              mirrors layers (domain / services / ui / config)
 scripts/            generators (icon, sample invoices) and Windows build
 installer/          Inno Setup script for the installer
 assets/             brand icon (.ico / .png)
-docs/               architecture, features and configuration
+docs/               architecture, how-it-works, ADRs, data model, UI, testing
 ```
 </content>

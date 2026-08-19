@@ -9,6 +9,7 @@ import customtkinter as ctk
 
 from automator import __version__
 from automator.ui.theme import Fonts, Palette, create_brand_mark
+from automator.ui.widgets import nav_button
 
 
 class SidebarView(ctk.CTkFrame):
@@ -32,7 +33,7 @@ class SidebarView(ctk.CTkFrame):
             strip.configure(fg_color=Palette.ACCENT if active else "transparent")
             button.configure(
                 fg_color=Palette.SIDEBAR_HOVER if active else "transparent",
-                text_color="#ffffff" if active else Palette.MUTED_ON_DARK,
+                text_color=Palette.ON_PRIMARY if active else Palette.MUTED_ON_DARK,
             )
 
     def set_running(self, running: bool) -> None:
@@ -45,7 +46,7 @@ class SidebarView(ctk.CTkFrame):
         create_brand_mark(brand).pack(side="left", padx=(0, 12))
         titles = ctk.CTkFrame(brand, fg_color="transparent")
         titles.pack(side="left")
-        ctk.CTkLabel(titles, text="Automator", font=self._fonts.h2, text_color="#ffffff").pack(anchor="w")
+        ctk.CTkLabel(titles, text="Automator", font=self._fonts.h2, text_color=Palette.ON_PRIMARY).pack(anchor="w")
         ctk.CTkLabel(
             titles,
             text=f"Facturas AFIP  ·  v{__version__}",
@@ -61,18 +62,8 @@ class SidebarView(ctk.CTkFrame):
         item.grid_propagate(False)
         strip = ctk.CTkFrame(item, width=4, fg_color="transparent", corner_radius=2)
         strip.grid(row=0, column=0, sticky="ns", padx=(0, 10))
-        button = ctk.CTkButton(
-            item,
-            text=text,
-            anchor="w",
-            height=40,
-            corner_radius=8,
-            font=self._fonts.body,
-            fg_color="transparent",
-            hover_color=Palette.SIDEBAR_HOVER,
-            text_color=Palette.MUTED_ON_DARK,
-            command=lambda: self._on_navigate(key),
-        )
+        button = nav_button(item, text, lambda: self._on_navigate(key), font=self._fonts.body)
+        button.configure(anchor="w", corner_radius=8)
         button.grid(row=0, column=1, sticky="nsew")
         self._nav_items[key] = (strip, button)
 

@@ -14,6 +14,7 @@ from automator.services.undo import UndoOutcome, perform_undo
 from automator.ui import system_utils
 from automator.ui.presentation import history_row, history_tag
 from automator.ui.strings import CLEAR_HISTORY_CONFIRM
+from automator.ui.system_utils import UiMailbox
 from automator.ui.views.history import HistoryView
 
 logger = logging.getLogger(__name__)
@@ -27,13 +28,20 @@ class HistoryActions:
         store: ConfigStore,
         view: HistoryView,
         widget: tk.Misc,
+        save: Callable[[], bool],
+        start: Callable[[], None],
+        mailbox: UiMailbox,
     ) -> None:
         self._ledger = ledger
         self._engine = engine
         self._store = store
         self._view = view
         self._widget = widget
+        self._save = save
+        self._start = start
+        self._mailbox = mailbox
         self._pending = 0
+        self._retry_when_started = False
         self.on_cleared: Callable[[], None] = lambda: None
 
     def set_pending(self, count: int) -> None:
@@ -80,11 +88,24 @@ class HistoryActions:
         messagebox.showinfo("Vaciar historial", "Historial vaciado. Los archivos siguen donde estaban.")
 
     def reprocess_pending(self) -> None:
+        if self._engine.is_running:
+            self._kick_retry()
+            return
+        if not self._save():
+            return
+        self._retry_when_started = True
+        self._start()
+
+    def on_engine_started(self) -> None:
+        if self._retry_when_started:
+            self._retry_when_started = False
+            self._kick_retry()
+
+    def _kick_retry(self) -> None:
         def run() -> None:
-            if not self._engine.is_running:
-                self._engine.start()
             count = self._engine.reprocess_pending()
             logger.info("Reintentando %d archivos pendientes", count)
+            self._mailbox.post(lambda: messagebox.showinfo("Reintentar", f"Se reencolaron {count} archivo(s)."))
 
         system_utils.run_async(run)
 

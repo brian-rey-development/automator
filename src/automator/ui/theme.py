@@ -39,9 +39,11 @@ class Palette:
     MUTED = "#6C7078"
     MUTED_ON_DARK = "#9A9EA6"
 
+    ON_PRIMARY = "#FFFFFF"
     SUCCESS = "#1F9D57"
     WARNING = "#C9820A"
     ERROR = "#D64545"
+    ERROR_HOVER = "#B83A3A"
 
     ROW_SUCCESS = "#F0FAF3"
     ROW_WARNING = "#FBF6EA"

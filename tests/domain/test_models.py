@@ -22,6 +22,11 @@ def test_identity_requires_number_and_supplier() -> None:
     assert invoice.identity == "acme s.a.|0001-00000123|FC A"
 
 
+def test_identity_normalizes_accents() -> None:
+    invoice = _invoice(supplier="Café SRL")
+    assert invoice.identity == "cafe srl|0001-00000123|FC A"
+
+
 def test_identity_is_none_without_supplier() -> None:
     invoice = _invoice(supplier=UNKNOWN_SUPPLIER)
     assert invoice.has_supplier is False

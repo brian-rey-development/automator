@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from automator.domain.cuit import coerce_cuit, extract_cuits, is_valid_cuit, normalize_cuit
+from automator.domain.cuit import (
+    coerce_cuit,
+    extract_cuits,
+    is_valid_cuit,
+    normalize_cuit,
+    require_valid_cuit,
+    unique_issuer_cuit,
+)
 
 
 @pytest.mark.parametrize(
@@ -31,6 +38,20 @@ def test_is_valid_cuit_rejects_a_wrong_check_digit() -> None:
 def test_extract_cuits_finds_both_parties_normalized() -> None:
     text = "CUIT: 30-99999999-5\nCUIT: 30-11111111-8"
     assert extract_cuits(text) == {"30999999995", "30111111118"}
+
+
+def test_extract_cuits_drops_invalid_check_digits() -> None:
+    assert extract_cuits("CUIT: 30-11111111-0") == set()
+
+
+def test_unique_issuer_cuit_subtracts_the_buyer() -> None:
+    text = "CUIT: 30-99999999-5\nCUIT: 30-11111111-8"
+    assert unique_issuer_cuit(text, "30111111118") == "30999999995"
+
+
+def test_unique_issuer_cuit_is_none_when_two_remain() -> None:
+    text = "CUIT: 30-99999999-5\nCUIT: 30-11111111-8"
+    assert unique_issuer_cuit(text, None) is None
 
 
 def test_extract_cuits_ignores_a_longer_number_that_contains_a_cuit() -> None:
@@ -63,3 +84,12 @@ def test_coerce_cuit_leaves_an_unrecoverable_value_untouched() -> None:
 
 def test_coerce_cuit_never_pads_an_empty_value() -> None:
     assert coerce_cuit("") == ""
+
+
+def test_require_valid_cuit_normalizes_a_good_value() -> None:
+    assert require_valid_cuit("30-11111111-8") == "30111111118"
+
+
+def test_require_valid_cuit_rejects_a_bad_check_digit() -> None:
+    with pytest.raises(ValueError, match="no es valido"):
+        require_valid_cuit("30111111110")

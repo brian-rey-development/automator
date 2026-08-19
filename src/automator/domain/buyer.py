@@ -1,10 +1,7 @@
 """Resolve which configured society is the buyer of a document.
 
-Exact CUIT always wins. Only when no known CUIT is present does it fall back to
-matching the printed buyer name against the society names, and even then it
-refuses to guess: the match must clear a threshold AND be clearly ahead of the
-runner-up, otherwise it is reported ambiguous and the document goes to review.
-This keeps the invariant that no document is ever filed under the wrong company.
+Exact CUIT always wins. Fuzzy name matching never files: it only proposes a
+candidate that filing policy sends to review.
 """
 
 from __future__ import annotations
@@ -14,9 +11,10 @@ from difflib import SequenceMatcher
 from typing import Protocol
 
 from automator.domain.models import ParsedInvoice
+from automator.domain.names import normalize_name
 
-_FUZZY_THRESHOLD = 0.90  # Minimum name similarity to accept a fuzzy buyer match.
-_FUZZY_MARGIN = 0.05  # The best match must beat the runner-up by at least this.
+_FUZZY_THRESHOLD = 0.90
+_FUZZY_MARGIN = 0.05
 
 
 class SocietyLike(Protocol):
@@ -28,12 +26,10 @@ class SocietyLike(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class BuyerResolution:
-    """Outcome of deciding the buying company for a document."""
-
-    cuit: str | None  # Resolved buyer CUIT, or None if it could not be decided.
-    ambiguous: bool  # Several candidates are indistinguishable: send to review.
-    fuzzy: bool  # Matched by name similarity, not by an exact CUIT.
-    score: float  # Name similarity (0..1) for a fuzzy match; 1.0 for exact.
+    cuit: str | None
+    ambiguous: bool
+    fuzzy: bool
+    score: float
 
 
 def resolve_buyer(invoice: ParsedInvoice, societies: list[SocietyLike]) -> BuyerResolution:
@@ -59,9 +55,8 @@ def _fuzzy_match(name: str, societies: list[SocietyLike]) -> BuyerResolution:
 
 
 def _best_similarity(name: str, society: SocietyLike) -> float:
-    """Best match of the printed name against the society's legal name, trade name and aliases."""
     return max(_similarity(name, candidate) for candidate in society.match_names())
 
 
 def _similarity(left: str, right: str) -> float:
-    return SequenceMatcher(None, left.casefold(), right.casefold()).ratio()
+    return SequenceMatcher(None, normalize_name(left), normalize_name(right)).ratio()

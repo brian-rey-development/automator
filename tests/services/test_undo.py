@@ -9,6 +9,7 @@ import pytest
 
 from automator.domain.models import ProcessOutcome, ProcessResult
 from automator.services import file_ops
+from automator.services.file_ops import file_signature
 from automator.services.ledger import Ledger, LedgerRecord
 from automator.services.undo import UndoOutcome, perform_undo
 
@@ -93,6 +94,35 @@ def test_perform_undo_failed_move_does_not_mark_reverted(tmp_path: Path, monkeyp
     assert result.outcome is UndoOutcome.FAILED
     assert archived.exists()
     assert ledger.last_undoable() is not None
+    ledger.close()
+
+
+def test_undo_forgets_copy_mode_source_signature(tmp_path: Path) -> None:
+    inbox = tmp_path / "entrada"
+    inbox.mkdir()
+    source = inbox / "original.pdf"
+    source.write_bytes(b"%PDF-orig")
+    archived = tmp_path / "salida" / "factura.pdf"
+    archived.parent.mkdir()
+    archived.write_bytes(b"%PDF-copy")
+    ledger = Ledger(tmp_path / "history.db")
+    result = ProcessResult(
+        source=source,
+        outcome=ProcessOutcome.MOVED,
+        destination=archived,
+        invoice=None,
+        message="ok",
+    )
+    ledger.record(result)
+    signature = file_signature(source)
+    assert signature is not None
+    ledger.mark_source_seen(signature)
+    record = ledger.last_undoable()
+    assert record is not None
+
+    perform_undo(record, inbox, ledger)
+
+    assert not ledger.source_seen(signature)
     ledger.close()
 
 

@@ -8,43 +8,11 @@ from collections.abc import Callable
 import customtkinter as ctk
 
 from automator.ui.theme import CORNER_RADIUS, Fonts, Palette
+from automator.ui.widgets.buttons import path_button, row_button
 
 
 def hint(parent: tk.Misc, text: str, font: ctk.CTkFont) -> ctk.CTkLabel:
     return ctk.CTkLabel(parent, text=text, font=font, text_color=Palette.MUTED, anchor="w", justify="left")
-
-
-def path_button(parent: tk.Misc, text: str, command: Callable[[], None]) -> ctk.CTkButton:
-    return ctk.CTkButton(
-        parent,
-        text=text,
-        width=72,
-        height=38,
-        corner_radius=CORNER_RADIUS,
-        fg_color=Palette.SURFACE_ALT,
-        hover_color=Palette.BORDER,
-        text_color=Palette.TEXT,
-        border_width=1,
-        border_color=Palette.BORDER,
-        command=command,
-    )
-
-
-def row_button(parent: tk.Misc, text: str, color: str, command: Callable[[], None], font: ctk.CTkFont) -> ctk.CTkButton:
-    return ctk.CTkButton(
-        parent,
-        text=text,
-        width=78,
-        height=32,
-        corner_radius=8,
-        font=font,
-        fg_color=Palette.SURFACE,
-        hover_color=Palette.BORDER,
-        text_color=color,
-        border_width=1,
-        border_color=Palette.BORDER,
-        command=command,
-    )
 
 
 def checkbox(parent: tk.Misc, text: str, var: tk.BooleanVar, row: int, font: ctk.CTkFont) -> None:
@@ -73,8 +41,7 @@ def folder_field(
     row: int,
     fonts: Fonts,
     on_pick: Callable[[], None],
-    on_open: Callable[[], None],
-    hint_text: str = "",
+    on_open: Callable[[], None] | None = None,
 ) -> None:
     block = ctk.CTkFrame(parent, fg_color="transparent")
     block.grid(row=row, column=0, sticky="ew", pady=(0, 10))
@@ -84,9 +51,8 @@ def folder_field(
     )
     ctk.CTkEntry(block, textvariable=var, height=38).grid(row=1, column=0, sticky="ew", pady=(4, 0))
     path_button(block, "Elegir", on_pick).grid(row=1, column=1, padx=(8, 0), pady=(4, 0))
-    path_button(block, "Abrir", on_open).grid(row=1, column=2, padx=(6, 0), pady=(4, 0))
-    if hint_text:
-        hint(block, hint_text, fonts.hint).grid(row=2, column=0, columnspan=3, sticky="w", pady=(3, 0))
+    if on_open is not None:
+        path_button(block, "Abrir", on_open).grid(row=1, column=2, padx=(6, 0), pady=(4, 0))
 
 
 def entity_row(

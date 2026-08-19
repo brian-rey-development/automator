@@ -67,17 +67,18 @@ def test_archived_destination_ignores_review_and_null_destination(tmp_path: Path
     ledger.close()
 
 
-def test_identity_exists_only_for_archived(tmp_path: Path) -> None:
+def test_archived_destination_only_for_filed_outcomes(tmp_path: Path) -> None:
     ledger = Ledger(tmp_path / "h.db")
     invoice = _invoice()
     assert invoice.identity is not None
-    ledger.record(_result(ProcessOutcome.MOVED, tmp_path / "a.pdf", invoice))
-    assert ledger.identity_exists(invoice.identity)
-    # A review does not count as archived, it must not flag a duplicate.
+    dest = tmp_path / "a.pdf"
+    dest.write_text("one")
+    ledger.record(_result(ProcessOutcome.MOVED, dest, invoice))
+    assert ledger.archived_destination(invoice.identity) == str(dest)
     other = _invoice(number="00000999")
     assert other.identity is not None
     ledger.record(_result(ProcessOutcome.NEEDS_REVIEW, tmp_path / "r.pdf", other))
-    assert not ledger.identity_exists(other.identity)
+    assert ledger.archived_destination(other.identity) is None
     ledger.close()
 
 
@@ -89,7 +90,9 @@ def test_last_undoable_and_mark_reverted(tmp_path: Path) -> None:
     assert record is not None
     assert record.outcome is ProcessOutcome.MOVED
     ledger.mark_reverted(record.id)
-    assert ledger.last_undoable() is None  # There is nothing left to undo.
+    leftover = ledger.last_undoable()
+    assert leftover is not None
+    assert leftover.outcome is ProcessOutcome.NEEDS_REVIEW
     ledger.close()
 
 
@@ -102,7 +105,7 @@ def test_clear_wipes_records_and_source_signatures(tmp_path: Path) -> None:
     ledger.mark_source_seen(signature)
     ledger.clear()
     assert ledger.recent() == []
-    assert not ledger.identity_exists(invoice.identity)
+    assert ledger.archived_destination(invoice.identity) is None
     assert not ledger.source_seen(signature)
     assert ledger.last_undoable() is None
     ledger.close()
@@ -159,5 +162,7 @@ def test_old_history_db_gains_issuer_cuit_column(tmp_path: Path) -> None:
     columns = {item[1] for item in row}
     assert "issuer_cuit" in columns
     version = ledger._conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
-    assert version == 2
+    assert version == 3
+    assert "issuer_identity" in columns
+    assert "source_signature" in columns
     ledger.close()

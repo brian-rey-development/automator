@@ -7,31 +7,27 @@ from datetime import date
 from enum import StrEnum
 from pathlib import Path
 
-# Sentinel used when the supplier's legal name could not be detected.
+from automator.domain.names import normalize_name
+
 UNKNOWN_SUPPLIER = "PROVEEDOR_DESCONOCIDO"
-_ORDER_LABEL = "OC"  # Short tag used in the file name for a purchase order.
+_ORDER_LABEL = "OC"
+_FILLER_SALES_POINT = "0000"
+_FILLER_NUMBER = "00000000"
 
 
 class DocumentType(StrEnum):
-    """Kind of document being filed. AFIP invoices and purchase orders differ in
-    their labels, numbering and destination, so the parser branches on this."""
-
     FACTURA = "factura"
     ORDEN_COMPRA = "orden_compra"
 
 
 class VoucherKind(StrEnum):
-    """Voucher type. The value is the label used in the file name."""
-
-    INVOICE = "FC"  # Invoice
-    CREDIT_NOTE = "NC"  # Credit note
-    DEBIT_NOTE = "ND"  # Debit note
+    INVOICE = "FC"
+    CREDIT_NOTE = "NC"
+    DEBIT_NOTE = "ND"
 
 
 @dataclass(frozen=True, slots=True)
 class Voucher:
-    """Voucher identified by type and letter (for example FC A)."""
-
     kind: VoucherKind
     letter: str
 
@@ -42,23 +38,19 @@ class Voucher:
 
 @dataclass(frozen=True, slots=True)
 class ParsedInvoice:
-    """Data extracted from an invoice, ready to be archived."""
-
     voucher: Voucher
-    sales_point: str  # Point of sale (4 digits)
-    number: str  # Voucher number (8 digits)
-    supplier: str  # Supplier's legal name
-    buyer_cuit: str | None  # CUIT of the detected buying company
-    ambiguous_buyer: bool = False  # Several own companies appear: it cannot be decided
-    issue_date: date | None = None  # Issue date, if it could be read
+    sales_point: str
+    number: str
+    supplier: str
+    buyer_cuit: str | None
+    ambiguous_buyer: bool = False
+    issue_date: date | None = None
     document_type: DocumentType = DocumentType.FACTURA
     buyer_name: str | None = None
     issuer_cuit: str | None = None
 
     @property
     def type_label(self) -> str:
-        """Short tag for the file name and identity: the voucher label for
-        invoices ("FC A"), or "OC" for purchase orders."""
         if self.document_type is DocumentType.ORDEN_COMPRA:
             return _ORDER_LABEL
         return self.voucher.label
@@ -69,39 +61,49 @@ class ParsedInvoice:
 
     @property
     def has_number(self) -> bool:
-        """True if a real voucher number could be extracted (not the filler one)."""
-        return self.number != "00000000" or self.sales_point != "0000"
+        return self.number != _FILLER_NUMBER or self.sales_point != _FILLER_SALES_POINT
 
     @property
     def has_supplier(self) -> bool:
-        """True if the supplier's legal name was detected (not the sentinel)."""
         return self.supplier != UNKNOWN_SUPPLIER
 
     @property
     def identity(self) -> str | None:
-        """Stable invoice key to detect duplicates; None if not reliable."""
         if not self.has_number or not self.has_supplier:
             return None
-        return f"{self.supplier.casefold()}|{self.full_number}|{self.type_label}"
+        return f"{normalize_name(self.supplier)}|{self.full_number}|{self.type_label}"
+
+    @property
+    def issuer_identity(self) -> str | None:
+        if not self.has_number or not self.issuer_cuit:
+            return None
+        return f"{self.issuer_cuit}|{self.full_number}|{self.type_label}"
 
 
 class ProcessOutcome(StrEnum):
-    """Possible outcome of processing a file."""
-
     MOVED = "moved"
     DRY_RUN = "dry_run"
-    UNCLASSIFIED = "unclassified"  # Archived, but without being able to identify the buying company.
-    DUPLICATE = "duplicate"  # An invoice with the same identity had already been archived.
+    UNCLASSIFIED = "unclassified"
+    DUPLICATE = "duplicate"
     NEEDS_REVIEW = "needs_review"
     QUARANTINED = "quarantined"
     SKIPPED_MISSING = "skipped_missing"
     ERROR = "error"
 
 
+FILED_OUTCOMES = (ProcessOutcome.MOVED, ProcessOutcome.UNCLASSIFIED)
+SESSION_ARCHIVED = (ProcessOutcome.MOVED, ProcessOutcome.DRY_RUN)
+UNDOABLE_OUTCOMES = (
+    ProcessOutcome.MOVED,
+    ProcessOutcome.UNCLASSIFIED,
+    ProcessOutcome.DUPLICATE,
+    ProcessOutcome.NEEDS_REVIEW,
+    ProcessOutcome.QUARANTINED,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class ProcessResult:
-    """Result of processing a single PDF."""
-
     source: Path
     outcome: ProcessOutcome
     destination: Path | None

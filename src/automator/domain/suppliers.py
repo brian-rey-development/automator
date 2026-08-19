@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict
 
-from automator.domain.cuit import CUIT_LENGTH, coerce_cuit, extract_cuits, is_valid_cuit
-from automator.domain.names import normalize_name
+from automator.domain.cuit import Cuit, extract_cuits
+from automator.domain.names import LegalName, normalize_name
 
 # The text fallback ignores very short aliases (an "SA" would hit every invoice).
 _MIN_TEXT_ALIAS = 5
@@ -14,27 +14,10 @@ _MIN_TEXT_ALIAS = 5
 class Supplier(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    cuit: str
-    legal_name: str
+    cuit: Cuit
+    legal_name: LegalName
     trade_name: str | None = None
     extra_aliases: tuple[str, ...] = ()
-
-    @field_validator("cuit")
-    @classmethod
-    def _normalize_cuit(cls, value: str) -> str:
-        digits = coerce_cuit(value)
-        if len(digits) != CUIT_LENGTH:
-            raise ValueError(f"El CUIT debe tener {CUIT_LENGTH} digitos: '{value}'")
-        if not is_valid_cuit(digits):
-            raise ValueError(f"El CUIT no es valido (digito verificador incorrecto): '{value}'")
-        return digits
-
-    @field_validator("legal_name")
-    @classmethod
-    def _legal_name_not_empty(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("La razon social no puede estar vacia.")
-        return value.strip()
 
     def aliases(self) -> frozenset[str]:
         raw = (self.legal_name, self.trade_name, *self.extra_aliases)
@@ -59,27 +42,43 @@ class SupplierRegistry:
         return len(self._suppliers)
 
     def match(self, text: str, exclude_cuits: set[str]) -> Supplier | None:
-        """Resolve the issuing supplier: CUIT first, normalized-name fallback."""
-        by_cuit = self._match_cuit(text, exclude_cuits)
+        leftover = extract_cuits(text) - exclude_cuits
+        by_cuit = self._match_cuit(leftover)
         if by_cuit is not None:
             return by_cuit
-        return self._match_text(text)
+        if leftover:
+            return None
+        return self._match_text(text, exclude_cuits)
 
     def search(self, query: str, limit: int) -> list[Supplier]:
         needle = normalize_name(query)
         matches = [s for s in self._suppliers if any(needle in alias for alias in s.aliases())]
         return sorted(matches, key=lambda s: s.legal_name)[:limit]
 
-    def _match_cuit(self, text: str, exclude_cuits: set[str]) -> Supplier | None:
+    def _match_cuit(self, leftover: set[str]) -> Supplier | None:
         candidates: set[Supplier] = set()
-        for cuit in extract_cuits(text) - exclude_cuits:
+        for cuit in leftover:
             candidates.update(self._by_cuit.get(cuit, ()))
         return next(iter(candidates)) if len(candidates) == 1 else None
 
-    def _match_text(self, text: str) -> Supplier | None:
+    def _match_text(self, text: str, exclude_cuits: set[str]) -> Supplier | None:
         haystack = normalize_name(text)
         matches: set[Supplier] = set()
         for alias, suppliers in self._by_name.items():
             if len(alias) >= _MIN_TEXT_ALIAS and alias in haystack:
-                matches.update(suppliers)
+                matches.update(s for s in suppliers if s.cuit not in exclude_cuits)
         return next(iter(matches)) if len(matches) == 1 else None
+
+
+def merge_supplier(existing: Supplier, incoming: Supplier) -> Supplier:
+    aliases = [*existing.extra_aliases, *incoming.extra_aliases]
+    if incoming.legal_name != existing.legal_name:
+        aliases.append(existing.legal_name)
+    if existing.trade_name and existing.trade_name != incoming.trade_name:
+        aliases.append(existing.trade_name)
+    return incoming.model_copy(
+        update={
+            "extra_aliases": tuple(dict.fromkeys(alias for alias in aliases if alias)),
+            "trade_name": incoming.trade_name or existing.trade_name,
+        }
+    )

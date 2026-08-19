@@ -14,6 +14,11 @@ UNKNOWN_FOLDER_NAME = "_SIN_CLASIFICAR"
 QUARANTINE_FOLDER_NAME = "_ERRORES"
 REVIEW_FOLDER_NAME = "_PARA_REVISAR"
 DUPLICATES_FOLDER_NAME = "_DUPLICADOS"
+ORDERS_UNKNOWN_FOLDER_NAME = "_SIN_SOCIEDAD"
+
+
+def default_orders_folder() -> Path:
+    return Path.home() / "Automator" / "Ordenes de compra"
 
 
 def default_config() -> AppConfig:
@@ -31,5 +36,5 @@ def default_config() -> AppConfig:
         base_output_folder=base,
         unknown_folder=base / UNKNOWN_FOLDER_NAME,
         quarantine_folder=base / QUARANTINE_FOLDER_NAME,
-        orders_folder=home / "Automator" / "Ordenes de compra",
+        orders_folder=default_orders_folder(),
     )

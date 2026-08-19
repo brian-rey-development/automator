@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
+from automator.domain.cuit import unique_issuer_cuit
 from automator.domain.models import UNKNOWN_SUPPLIER, ParsedInvoice
 from automator.domain.parser.afip_codes import detect_voucher
 from automator.domain.parser.numbers import detect_number
@@ -24,6 +25,7 @@ def parse_factura(text: str, known_cuits: Iterable[str]) -> ParsedInvoice:
         buyer_cuit=buyer_cuit,
         ambiguous_buyer=ambiguous,
         issue_date=detect_date(text),
+        issuer_cuit=unique_issuer_cuit(text, buyer_cuit),
     )
 
 

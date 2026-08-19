@@ -62,12 +62,16 @@ class Worker:
             if isinstance(item, Path):
                 self.safe_process(item)
 
+    def process_now(self, path: Path) -> ProcessResult:
+        result = self._processor.process(path)
+        record_result(self._ledger, result)
+        self._memory.remember(path, result.outcome)
+        self._emit(EngineEvent(EngineEventType.RESULT, result.message, path, result))
+        return result
+
     def safe_process(self, path: Path) -> None:
         try:
-            result = self._processor.process(path)
-            record_result(self._ledger, result)
-            self._memory.remember(path, result.outcome)
-            self._emit(EngineEvent(EngineEventType.RESULT, result.message, path, result))
+            self.process_now(path)
         except Exception as exc:
             logger.exception("Error inesperado procesando %s", path)
             self._emit(EngineEvent(EngineEventType.ERROR, str(exc), path))

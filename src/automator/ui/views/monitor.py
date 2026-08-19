@@ -5,12 +5,11 @@ from __future__ import annotations
 import datetime as dt
 import tkinter as tk
 from collections.abc import Callable
-from tkinter import ttk
 
 import customtkinter as ctk
 
 from automator.ui.theme import CORNER_RADIUS, Fonts, Palette
-from automator.ui.widgets import hint, primary_button
+from automator.ui.widgets import hint, path_button, primary_button, status_tree
 
 _MAX_LOG_ROWS = 500
 _STAT_CARDS = (
@@ -46,16 +45,16 @@ class MonitorView(ctk.CTkFrame):
             state="normal",
             text="Detener" if running else "Iniciar",
             fg_color=Palette.ERROR if running else Palette.ACCENT,
-            hover_color="#B83A3A" if running else Palette.ACCENT_HOVER,
-            text_color="#ffffff" if running else Palette.ACCENT_TEXT,
+            hover_color=Palette.ERROR_HOVER if running else Palette.ACCENT_HOVER,
+            text_color=Palette.ON_PRIMARY if running else Palette.ACCENT_TEXT,
         )
 
-    def set_pending(self, count: int) -> None:
-        if count <= 0:
+    def set_pending(self, review: int, quarantine: int = 0) -> None:
+        total = review + quarantine
+        if total <= 0:
             self.pending_banner.grid_remove()
             return
-        suffix = "s" if count != 1 else ""
-        self.pending_var.set(f"{count} pendiente{suffix} de revision")
+        self.pending_var.set(_pending_copy(review, quarantine))
         self.pending_banner.grid(row=2, column=0, sticky="ew", pady=(0, 20))
 
     def set_stat(self, key: str, value: int) -> None:
@@ -122,20 +121,9 @@ class MonitorView(ctk.CTkFrame):
         ctk.CTkLabel(banner, textvariable=self.pending_var, font=self._fonts.body, text_color=Palette.WARNING).grid(
             row=0, column=0, sticky="w", padx=18, pady=12
         )
-        ctk.CTkButton(
-            banner,
-            text="Abrir carpeta de revision",
-            width=190,
-            height=34,
-            corner_radius=CORNER_RADIUS,
-            font=self._fonts.small,
-            fg_color=Palette.SURFACE,
-            hover_color=Palette.BORDER,
-            text_color=Palette.TEXT,
-            border_width=1,
-            border_color=Palette.BORDER,
-            command=on_open_review,
-        ).grid(row=0, column=1, sticky="e", padx=(0, 12), pady=8)
+        open_btn = path_button(banner, "Abrir pendientes", on_open_review)
+        open_btn.configure(width=190, height=34, font=self._fonts.small)
+        open_btn.grid(row=0, column=1, sticky="e", padx=(0, 12), pady=8)
         self.pending_banner = banner
 
     def _build_activity_log(self) -> None:
@@ -153,31 +141,27 @@ class MonitorView(ctk.CTkFrame):
         container.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 18))
         container.grid_rowconfigure(0, weight=1)
         container.grid_columnconfigure(0, weight=1)
-        columns = ("hora", "archivo", "tipo", "estado", "destino")
-        tree = ttk.Treeview(container, columns=columns, show="headings", selectmode="browse", style="Activity.Treeview")
-        _configure_log_columns(tree)
-        tree.tag_configure("ok", background=Palette.ROW_SUCCESS)
-        tree.tag_configure("warn", background=Palette.ROW_WARNING)
-        tree.tag_configure("error", background=Palette.ROW_ERROR)
-        scroll = ctk.CTkScrollbar(container, command=tree.yview)
-        tree.configure(yscrollcommand=scroll.set)
-        tree.grid(row=0, column=0, sticky="nsew")
-        scroll.grid(row=0, column=1, sticky="ns", padx=(6, 0))
-        self.log = tree
+        self.log = status_tree(
+            container,
+            {
+                "when": ("Hora", 70),
+                "file": ("Archivo", 220),
+                "voucher": ("Comprobante", 110),
+                "status": ("Estado", 110),
+                "destination": ("Destino", 340),
+            },
+            "destination",
+        )
         self.empty_state = _empty_state(container, self._fonts)
 
 
-def _configure_log_columns(tree: ttk.Treeview) -> None:
-    headings = {
-        "hora": ("Hora", 70),
-        "archivo": ("Archivo", 220),
-        "tipo": ("Comprobante", 110),
-        "estado": ("Estado", 110),
-        "destino": ("Destino", 340),
-    }
-    for column, (text, width) in headings.items():
-        tree.heading(column, text=text)
-        tree.column(column, width=width, anchor="w", stretch=(column == "destino"))
+def _pending_copy(review: int, quarantine: int) -> str:
+    parts: list[str] = []
+    if review:
+        parts.append(f"{review} para revisar")
+    if quarantine:
+        parts.append(f"{quarantine} en cuarentena")
+    return ", ".join(parts) or "Pendientes"
 
 
 def _empty_state(parent: ctk.CTkFrame, fonts: Fonts) -> ctk.CTkFrame:

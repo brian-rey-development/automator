@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
-from automator.config import SocietyMapping
 from automator.domain.buyer import BuyerResolution
 from automator.domain.filing import FilingFolders, decide_filing, is_reliable
 from automator.domain.models import ParsedInvoice, ProcessOutcome, Voucher, VoucherKind
@@ -67,8 +67,30 @@ def test_unknown_buyer_is_unclassified() -> None:
     assert decision.outcome is ProcessOutcome.UNCLASSIFIED
 
 
+@dataclass(frozen=True)
+class _Society:
+    cuit: str
+    names: tuple[str, ...]
+
+    def match_names(self) -> tuple[str, ...]:
+        return self.names
+
+
+def test_fuzzy_buyer_goes_to_review() -> None:
+    decision = decide_filing(
+        _invoice(),
+        BuyerResolution(cuit="30111111118", ambiguous=False, fuzzy=True, score=0.93),
+        societies=(),
+        is_duplicate=False,
+        folders=_folders(),
+    )
+    assert decision.outcome is ProcessOutcome.NEEDS_REVIEW
+    assert decision.base_folder == _folders().review
+    assert "93%" in decision.message
+
+
 def test_own_society_trade_name_as_issuer_is_unreliable() -> None:
-    society = SocietyMapping(cuit="30111111118", name="EMPRESA EJEMPLO SA", trade_name="Ejemplo")
+    society = _Society("30111111118", ("EMPRESA EJEMPLO SA", "Ejemplo"))
     assert is_reliable(_invoice("Ejemplo"), (society,)) is False
 
 

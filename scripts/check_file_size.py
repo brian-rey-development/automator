@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-MAX_LINES = 250
+MAX_LINES = 200
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "automator"
 ALLOWLIST: set[str] = set()

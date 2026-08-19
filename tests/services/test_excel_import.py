@@ -46,7 +46,7 @@ def test_parse_suppliers_recovers_cuit_missing_leading_zeros() -> None:
     assert report.created[0].cuit == "20012345675"
 
 
-def test_parse_suppliers_reports_empty_razon_social() -> None:
+def test_parse_suppliers_reports_empty_legal_name() -> None:
     report = parse_suppliers([{"CUIT": "30-99999999-5", "Razón Social": "   "}])
     assert report.created == []
     assert "social" in report.invalid[0][1].casefold()

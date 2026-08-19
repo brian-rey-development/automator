@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import tkinter as tk
 from collections.abc import Callable, Sequence
-from tkinter import ttk
 
 import customtkinter as ctk
 
 from automator.ui.theme import CORNER_RADIUS, Fonts, Palette
-from automator.ui.widgets import ghost_button, hint, primary_button, secondary_button
+from automator.ui.widgets import ghost_button, hint, primary_button, secondary_button, status_tree
 
 _ICON_RETRY = "↻"
 _ICON_UNDO = "↶"
@@ -61,11 +60,13 @@ class HistoryView(ctk.CTkFrame):
     ) -> None:
         bar = ctk.CTkFrame(self, fg_color="transparent")
         bar.grid(row=1, column=0, sticky="ew", pady=(0, 16))
-        self.retry_btn = primary_button(bar, f"{_ICON_RETRY}  Reintentar pendientes", on_retry, font=self._fonts.h2)
+        self.retry_btn = primary_button(
+            bar, f"{_ICON_RETRY}  Reintentar pendientes", on_retry, font=self._fonts.h2, width=240
+        )
         self.retry_btn.configure(height=40)
         self.retry_btn.pack(side="left", padx=(0, 10))
         self.undo_btn = secondary_button(
-            bar, f"{_ICON_UNDO}  Deshacer ultimo movimiento", on_undo, font=self._fonts.body
+            bar, f"{_ICON_UNDO}  Deshacer ultimo movimiento", on_undo, font=self._fonts.body, width=250
         )
         self.undo_btn.pack(side="left")
         ghost_button(bar, f"{_ICON_REFRESH}  Actualizar", on_refresh, font=self._fonts.body).pack(side="right")
@@ -77,26 +78,18 @@ class HistoryView(ctk.CTkFrame):
         card.grid(row=2, column=0, sticky="nsew")
         card.grid_rowconfigure(0, weight=1)
         card.grid_columnconfigure(0, weight=1)
-        columns = ("fecha", "archivo", "comprobante", "estado", "destino")
-        tree = ttk.Treeview(card, columns=columns, show="headings", selectmode="browse", style="Activity.Treeview")
-        _configure_history_columns(tree)
-        for tag, color in (("ok", Palette.ROW_SUCCESS), ("warn", Palette.ROW_WARNING), ("error", Palette.ROW_ERROR)):
-            tree.tag_configure(tag, background=color)
-        scroll = ctk.CTkScrollbar(card, command=tree.yview)
-        tree.configure(yscrollcommand=scroll.set)
-        tree.grid(row=0, column=0, sticky="nsew", padx=(18, 0), pady=18)
-        scroll.grid(row=0, column=1, sticky="ns", padx=(6, 12), pady=18)
-        self.tree = tree
-
-
-def _configure_history_columns(tree: ttk.Treeview) -> None:
-    headings = {
-        "fecha": ("Fecha", 150),
-        "archivo": ("Archivo", 200),
-        "comprobante": ("Comprobante", 110),
-        "estado": ("Estado", 130),
-        "destino": ("Destino", 320),
-    }
-    for column, (text, width) in headings.items():
-        tree.heading(column, text=text)
-        tree.column(column, width=width, anchor="w", stretch=(column == "destino"))
+        wrap = ctk.CTkFrame(card, fg_color=Palette.SURFACE, corner_radius=0)
+        wrap.grid(row=0, column=0, sticky="nsew", padx=18, pady=18)
+        wrap.grid_rowconfigure(0, weight=1)
+        wrap.grid_columnconfigure(0, weight=1)
+        self.tree = status_tree(
+            wrap,
+            {
+                "when": ("Fecha", 150),
+                "file": ("Archivo", 200),
+                "voucher": ("Comprobante", 110),
+                "status": ("Estado", 130),
+                "destination": ("Destino", 320),
+            },
+            "destination",
+        )

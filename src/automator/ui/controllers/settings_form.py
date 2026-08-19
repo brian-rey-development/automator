@@ -6,17 +6,19 @@ import logging
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
 
 from pydantic import ValidationError
 
-from automator.config import AppConfig, ConfigStore, SocietyMapping, log_dir
+from automator.config import AppConfig, ConfigStore, SocietyMapping
+from automator.paths import log_dir
 from automator.services.excel_import import ExcelReadError, MissingColumnError, parse_societies, read_rows
 from automator.ui import system_utils
 from automator.ui.dialogs.import_report_dialog import ImportReportDialog
 from automator.ui.dialogs.society_dialog import SocietyDialog
+from automator.ui.pickers import ask_excel, ask_folder
 from automator.ui.presentation import format_validation_error
-from automator.ui.system_utils import UiMailbox, open_folder
+from automator.ui.system_utils import UiMailbox, reveal_folder
 from automator.ui.views.settings import SettingsView
 
 logger = logging.getLogger(__name__)
@@ -122,31 +124,31 @@ class SettingsForm:
             self.refresh_societies()
 
     def remove_society(self, index: int) -> None:
+        society = self.societies[index]
+        if not messagebox.askyesno(
+            "Eliminar empresa",
+            f"Se quita {society.name} (CUIT {society.cuit}) de la lista. Recorda guardar.",
+        ):
+            return
         del self.societies[index]
         self.refresh_societies()
 
     def import_societies(self) -> None:
-        path = _ask_excel()
+        path = ask_excel(self._widget)
         if path is None:
             return
         system_utils.run_async(lambda: self._import_societies_from(path))
 
     def pick_folder(self, var: tk.StringVar) -> None:
-        chosen = filedialog.askdirectory(parent=self._widget, title="Selecciona una carpeta")
-        if chosen:
-            var.set(chosen)
-
-    def open_input(self) -> None:
-        open_folder(Path(self._view.input_var.get().strip() or "."))
-
-    def open_output(self) -> None:
-        open_folder(Path(self._view.output_var.get().strip() or "."))
+        chosen = ask_folder(self._widget)
+        if chosen is not None:
+            var.set(str(chosen))
 
     def open_folder_var(self, var: tk.StringVar) -> None:
-        open_folder(Path(var.get().strip() or "."))
+        reveal_folder(Path(var.get().strip()))
 
     def open_logs(self) -> None:
-        open_folder(log_dir())
+        reveal_folder(log_dir())
 
     def _parse_timeout(self) -> float | None:
         try:
@@ -194,8 +196,3 @@ class SettingsForm:
 
     def _ui_error(self, title: str, message: str) -> None:
         self._mailbox.post(lambda: messagebox.showerror(title, message))
-
-
-def _ask_excel() -> Path | None:
-    path = filedialog.askopenfilename(title="Elegi el Excel", filetypes=[("Excel", "*.xlsx")])
-    return Path(path) if path else None

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from automator.config import ConfigStore
 from automator.ui import system_utils
 from automator.ui.presentation import count_pdfs
-from automator.ui.system_utils import notify, open_folder
+from automator.ui.system_utils import notify, reveal_folder
 from automator.ui.views.monitor import MonitorView
 
 _PENDING_POLL_MS = 5000
@@ -23,7 +23,7 @@ class PendingController:
         self._last = 0
         self._active = False
         self._counting = False
-        self._latest: int | None = None
+        self._latest: tuple[int, int] | None = None
         self.on_count: Callable[[int], None] = lambda _count: None
 
     def start(self) -> None:
@@ -34,7 +34,17 @@ class PendingController:
         self._active = False
 
     def open_review(self) -> None:
-        open_folder(self._store.get().review_folder)
+        config = self._store.get()
+        review_n = count_pdfs(config.review_folder)
+        quarantine_n = count_pdfs(config.quarantine_folder)
+        if quarantine_n and not review_n:
+            reveal_folder(config.quarantine_folder)
+            return
+        if review_n and quarantine_n:
+            reveal_folder(config.review_folder)
+            reveal_folder(config.quarantine_folder)
+            return
+        reveal_folder(config.review_folder)
 
     def _poll(self) -> None:
         if not self._active:
@@ -59,17 +69,18 @@ class PendingController:
     def _count(self) -> None:
         try:
             config = self._store.get()
-            self._latest = count_pdfs(config.review_folder) + count_pdfs(config.quarantine_folder)
+            self._latest = (count_pdfs(config.review_folder), count_pdfs(config.quarantine_folder))
         finally:
             self._counting = False
 
-    def _apply(self, count: int) -> None:
+    def _apply(self, counts: tuple[int, int]) -> None:
         if not self._active:
             return
-        self.count = count
-        self._monitor.set_pending(count)
-        self._maybe_notify(count)
-        self.on_count(count)
+        review, quarantine = counts
+        self.count = review + quarantine
+        self._monitor.set_pending(review, quarantine)
+        self._maybe_notify(self.count)
+        self.on_count(self.count)
 
     def _maybe_notify(self, count: int) -> None:
         if count > self._last and self._store.get().notify:

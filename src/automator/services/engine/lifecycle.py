@@ -5,23 +5,24 @@ from __future__ import annotations
 import logging
 import queue
 import threading
-from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
-from automator.config import AppConfig
+from automator.config import AppConfig, ConfigProvider
 from automator.domain.models import ParsedInvoice, ProcessResult
-from automator.services.engine.events import ConfigProvider, EngineEvent, EngineEventType, EventSink, emit
-from automator.services.engine.inbox import Inbox, list_pdfs
-from automator.services.engine.source_memory import SourceMemory
-from automator.services.engine.worker import (
-    RESCAN_INTERVAL_S,
-    SENTINEL,
-    WORKER_JOIN_TIMEOUT_S,
-    Worker,
-    is_archived_duplicate,
-    record_result,
+from automator.services.engine.events import EngineEvent, EngineEventType, EventSink, emit
+from automator.services.engine.inbox import Inbox
+from automator.services.engine.runtime import (
+    WatcherFactory,
+    halt,
+    join_threads,
+    start_rescanner,
+    start_watcher,
+    start_worker,
 )
+from automator.services.engine.source_memory import SourceMemory
+from automator.services.engine.worker import RESCAN_INTERVAL_S, Worker, is_archived_duplicate
+from automator.services.folders import ensure_folders
 from automator.services.ledger import Ledger
 from automator.services.pdf_reader import extract_text
 from automator.services.processing import InvoiceProcessor, RegistryProvider, TextExtractor, empty_registry
@@ -29,18 +30,10 @@ from automator.services.watcher import FolderWatcher
 
 logger = logging.getLogger(__name__)
 
-WatcherFactory = Callable[[Path, Callable[[Path], None]], FolderWatcher]
 _STOP_TIMEOUT_MSG = "El monitor no pudo detenerse a tiempo."
 
 
 class ProcessingEngine:
-    """Coordinates the watcher, a queue and a worker that processes the PDFs.
-
-    The queue and the stop signal are recreated on each start (a "generation"), so
-    an old worker that takes long to finish never shares a queue with a new one. A
-    start is rejected while the previous generation still owns its threads.
-    """
-
     def __init__(
         self,
         config_provider: ConfigProvider,
@@ -75,7 +68,6 @@ class ProcessingEngine:
         self._rescanner: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
-        self._input_unreadable = False
         self._memory = SourceMemory(self._lock, config_provider, ledger)
         self._inbox = Inbox(self._lock, self._memory, self._emit, config_provider, self._get_queue)
         self._loop = Worker(self._processor, self._inbox, self._memory, self._emit, ledger)
@@ -123,52 +115,22 @@ class ProcessingEngine:
             return config
 
     def _launch(self, config: AppConfig) -> None:
-        config.ensure_folders()
+        ensure_folders(config)
         self._generation_id += 1
         self._queue = queue.Queue()
         self._stop_event = threading.Event()
         self._inbox.clear()
         self._memory.clear()
-        self._input_unreadable = False
-        self._start_threads(config)
-
-    def _start_threads(self, config: AppConfig) -> None:
-        self._watcher = self._watcher_factory(config.input_folder, self._inbox.enqueue)
-        self._watcher.start()
-        self._worker = threading.Thread(
-            target=self._loop.run, args=(self._queue,), name="automator-worker", daemon=True
-        )
-        self._worker.start()
-        self._rescanner = threading.Thread(target=self._rescan_loop, name="automator-rescan", daemon=True)
-        self._rescanner.start()
-
-    def _halt_generation(self, watcher: FolderWatcher | None, work_queue: queue.Queue[object]) -> None:
-        self._stop_event.set()
-        try:
-            if watcher is not None:
-                watcher.stop()
-        except Exception:
-            logger.exception("Fallo al detener el watcher")
-        finally:
-            work_queue.put(SENTINEL)
+        self._watcher = start_watcher(self._watcher_factory, config.input_folder, self._inbox.enqueue)
+        self._worker = start_worker(self._loop, self._queue)
+        self._rescanner = start_rescanner(self._rescan_loop)
 
     def _cleanup_failed_start(self) -> None:
-        self._halt_generation(self._watcher, self._queue)
+        halt(self._watcher, self._queue, self._stop_event)
         self._clear_if_stopped()
 
-    def _join_threads(self) -> bool:
-        worker = self._worker
-        rescanner = self._rescanner
-        if worker is not None:
-            worker.join(timeout=WORKER_JOIN_TIMEOUT_S)
-        if rescanner is not None:
-            rescanner.join(timeout=WORKER_JOIN_TIMEOUT_S)
-        worker_alive = worker is not None and worker.is_alive()
-        rescanner_alive = rescanner is not None and rescanner.is_alive()
-        return not worker_alive and not rescanner_alive
-
     def _clear_if_stopped(self) -> bool:
-        if self._join_threads():
+        if join_threads(self._worker, self._rescanner):
             with self._lock:
                 self._watcher = None
                 self._worker = None
@@ -185,48 +147,29 @@ class ProcessingEngine:
                     return
                 watcher = self._watcher
                 work_queue = self._queue
-            self._halt_generation(watcher, work_queue)
+            halt(watcher, work_queue, self._stop_event)
             if self._clear_if_stopped():
                 self._emit(EngineEvent(EngineEventType.STOPPED, "Monitor detenido."))
 
     def process_existing(self) -> int:
-        """Enqueues all the PDFs already present in the input folder."""
         return self._inbox.process_existing()
 
     def reprocess_pending(self) -> int:
-        """Retries what was left in review and quarantine (useful after adjusting the config).
-
-        Does not include archived nor unclassified: those are already in the history and
-        would be detected as duplicates of themselves.
-        """
         return self._inbox.reprocess_pending()
 
     def _rescan_loop(self) -> None:
         while not self._stop_event.wait(RESCAN_INTERVAL_S):
-            try:
-                paths = list_pdfs(self._config_provider().input_folder)
-            except OSError as exc:
-                if not self._input_unreadable:
-                    self._input_unreadable = True
-                    self._emit(EngineEvent(EngineEventType.ERROR, f"No se puede leer la carpeta de entrada: {exc}"))
-                continue
-            self._input_unreadable = False
-            for path in paths:
-                self._inbox.requeue(path)
+            self._inbox.rescan()
 
     def process_now(self, path: Path) -> ProcessResult:
-        """Processes a file synchronously (useful for tests and CLI)."""
-        result = self._processor.process(path)
-        record_result(self._ledger, result)
-        self._memory.remember(path, result.outcome)
-        self._emit(EngineEvent(EngineEventType.RESULT, result.message, path, result))
-        return result
+        self._inbox.reserve(path)
+        try:
+            return self._loop.process_now(path)
+        finally:
+            self._inbox.release(path)
 
     def _duplicate_check(self, invoice: ParsedInvoice) -> bool:
         return is_archived_duplicate(self._ledger, invoice)
-
-    def _safe_process(self, path: Path) -> None:
-        self._loop.safe_process(path)
 
     def _emit(self, event: EngineEvent) -> None:
         if event.generation_id == 0:

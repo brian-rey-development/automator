@@ -1,9 +1,6 @@
 """Tolerant Excel importer for suppliers and buying companies.
 
-Only the Excel reading touches IO (openpyxl); everything else is pure and
-testable with plain dict rows. Headers are matched flexibly (accents, case,
-dots ignored), extra alias columns are folded in, and each row is validated
-independently so one bad row never aborts the whole import.
+Only read_rows touches IO. Headers match flexibly; one bad row never aborts the import.
 """
 
 from __future__ import annotations
@@ -15,11 +12,13 @@ from pathlib import Path
 from typing import Generic, TypeVar
 
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 from pydantic import ValidationError
 
 from automator.config import SocietyMapping
 from automator.domain.names import normalize_name
-from automator.domain.suppliers import Supplier
+from automator.domain.suppliers import Supplier, merge_supplier
+from automator.domain.validation import first_validation_error
 
 T = TypeVar("T")
 
@@ -61,7 +60,7 @@ def read_rows(path: Path) -> list[dict[str, str]]:
     """Read the first sheet into a list of header-keyed rows (the only IO)."""
     try:
         workbook = load_workbook(path, read_only=True, data_only=True)
-    except Exception as exc:
+    except (OSError, InvalidFileException, ValueError, KeyError) as exc:
         raise ExcelReadError(str(exc)) from exc
     try:
         rows = workbook.active.iter_rows(values_only=True)
@@ -109,6 +108,8 @@ def _parse(
 
 
 def _columns(rows: list[dict[str, str]]) -> tuple[dict[str, str], list[str]]:
+    if not rows:
+        raise MissingColumnError("El Excel no tiene filas de datos.")
     headers = list(dict.fromkeys(key for row in rows for key in row))
     columns = map_columns(headers)
     if "cuit" not in columns or "legal_name" not in columns:
@@ -117,12 +118,12 @@ def _columns(rows: list[dict[str, str]]) -> tuple[dict[str, str], list[str]]:
 
 
 def _extract(row: dict[str, str], columns: dict[str, str], alias_headers: list[str]) -> _Fields:
-    fantasia = row.get(columns["trade_name"], "").strip() if "trade_name" in columns else ""
+    trade = row.get(columns["trade_name"], "").strip() if "trade_name" in columns else ""
     aliases = tuple(alias for header in alias_headers if (alias := row.get(header, "").strip()))
     return _Fields(
         cuit=row.get(columns["cuit"], "").strip(),
         legal_name=row.get(columns["legal_name"], "").strip(),
-        trade_name=fantasia or None,
+        trade_name=trade or None,
         aliases=aliases,
     )
 
@@ -147,15 +148,7 @@ def _build_society(fields: _Fields) -> SocietyMapping:
 
 def _merge_supplier(created: dict[str, Supplier], supplier: Supplier) -> None:
     existing = created.get(supplier.cuit)
-    if existing is None:
-        created[supplier.cuit] = supplier
-        return
-    created[supplier.cuit] = existing.model_copy(
-        update={
-            "extra_aliases": _dedupe(existing.extra_aliases, supplier.extra_aliases),
-            "trade_name": existing.trade_name or supplier.trade_name,
-        }
-    )
+    created[supplier.cuit] = supplier if existing is None else merge_supplier(existing, supplier)
 
 
 def _merge_society(created: dict[str, SocietyMapping], society: SocietyMapping) -> None:
@@ -177,7 +170,7 @@ def _dedupe(*groups: tuple[str, ...]) -> tuple[str, ...]:
 
 def _reason(exc: ValidationError | ValueError) -> str:
     if isinstance(exc, ValidationError):
-        return str(exc.errors()[0]["msg"]).removeprefix("Value error, ")
+        return first_validation_error(exc)
     return str(exc)
 
 

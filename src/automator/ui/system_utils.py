@@ -39,19 +39,36 @@ def run_async(target: Callable[[], object]) -> None:
     threading.Thread(target=target, daemon=True).start()
 
 
-def open_folder(path: Path) -> None:
+def open_folder(path: Path) -> bool:
     if not path.exists():
         logger.warning("No se abre una carpeta que no existe: %s", path)
-        return
+        return False
     try:
         if sys.platform.startswith("win"):
-            os.startfile(str(path))  # type: ignore[attr-defined]  # Only exists on Windows.
+            os.startfile(str(path))  # type: ignore[attr-defined]
         elif sys.platform == "darwin":
             subprocess.run(["open", str(path)], check=False)
         else:
             subprocess.run(["xdg-open", str(path)], check=False)
     except OSError:
         logger.exception("No se pudo abrir la carpeta %s", path)
+        return False
+    return True
+
+
+def reveal_folder(path: Path) -> None:
+    from tkinter import messagebox
+
+    text = str(path).strip()
+    if not text or text == ".":
+        messagebox.showwarning("Carpeta", "Elegi una carpeta primero.")
+        return
+    target = Path(text)
+    if not target.exists():
+        messagebox.showwarning("Carpeta", f"No existe:\n{target}\nCreala o eligi otra.")
+        return
+    if not open_folder(target):
+        messagebox.showerror("Carpeta", f"No se pudo abrir:\n{target}")
 
 
 def notify(title: str, message: str) -> None:

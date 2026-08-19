@@ -7,7 +7,7 @@ import tkinter as tk
 import customtkinter as ctk
 
 from automator.ui.theme import CORNER_RADIUS, Palette
-from automator.ui.widgets import make_modal
+from automator.ui.widgets import make_modal, secondary_button
 
 _MAX_INVALID_SHOWN = 30
 
@@ -31,14 +31,7 @@ class ImportReportDialog(ctk.CTkToplevel):
         )
         if invalid:
             self._invalid_list(card, invalid)
-        ctk.CTkButton(
-            card,
-            text="Entendido",
-            width=120,
-            fg_color=Palette.PRIMARY,
-            hover_color=Palette.PRIMARY_HOVER,
-            command=self.destroy,
-        ).pack(anchor="e", padx=20, pady=(4, 20))
+        secondary_button(card, "Entendido", self.destroy, width=120).pack(anchor="e", padx=20, pady=(4, 20))
 
     def _invalid_list(self, parent: ctk.CTkFrame, invalid: list[tuple[int, str]]) -> None:
         ctk.CTkLabel(parent, text="Filas con errores (no importadas):", text_color=Palette.MUTED).pack(

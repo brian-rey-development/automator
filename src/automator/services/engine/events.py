@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from automator.config import AppConfig
+from automator.config import ConfigProvider
 from automator.domain.models import ProcessResult
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,8 @@ class EngineEvent:
 
 
 EventSink = Callable[[EngineEvent], None]
-ConfigProvider = Callable[[], AppConfig]
+
+__all__ = ["ConfigProvider", "EngineEvent", "EngineEventType", "EventSink", "emit"]
 
 
 def emit(sink: EventSink, event: EngineEvent) -> None:

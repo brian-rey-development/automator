@@ -124,3 +124,9 @@ name = "Domain does not import config"
 type = "forbidden"
 source_modules = ["automator.domain"]
 forbidden_modules = ["automator.config"]
+
+[[tool.importlinter.contracts]]
+name = "Config does not import services"
+type = "forbidden"
+source_modules = ["automator.config"]
+forbidden_modules = ["automator.services"]

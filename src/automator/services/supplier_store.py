@@ -13,7 +13,7 @@ import sqlite3
 import threading
 from pathlib import Path
 
-from automator.domain.suppliers import Supplier, SupplierRegistry
+from automator.domain.suppliers import Supplier, SupplierRegistry, merge_supplier
 from automator.services.persistence.sqlite import connect_wal
 
 _SCHEMA = """
@@ -99,12 +99,7 @@ class SupplierRegistryStore:
 
 
 def _merge(existing: Supplier | None, incoming: Supplier) -> Supplier:
-    if existing is None:
-        return incoming
-    aliases = tuple(dict.fromkeys((*existing.extra_aliases, *incoming.extra_aliases)))
-    return incoming.model_copy(
-        update={"extra_aliases": aliases, "trade_name": incoming.trade_name or existing.trade_name}
-    )
+    return incoming if existing is None else merge_supplier(existing, incoming)
 
 
 def _row(supplier: Supplier) -> tuple[str, str, str | None, str]:

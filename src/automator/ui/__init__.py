@@ -1,1 +1,1 @@
-"""Desktop graphical interface built with Tkinter/ttk."""
+"""CustomTkinter desktop UI."""

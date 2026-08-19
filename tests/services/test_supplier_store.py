@@ -33,7 +33,7 @@ def test_bulk_upsert_updates_and_merges_aliases(store: SupplierStore) -> None:
     created, updated = store.bulk_upsert([_supplier("30999999995", "A2", extra_aliases=("y",))])
     assert (created, updated) == (0, 1)
     stored = store.all()[0]
-    assert set(stored.extra_aliases) == {"x", "y"}
+    assert set(stored.extra_aliases) == {"x", "y", "A"}
     assert stored.legal_name == "A2"
 
 

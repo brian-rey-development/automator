@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from automator.config import AppConfig, SocietyMapping
+from automator.config import ORDERS_UNKNOWN_FOLDER_NAME, AppConfig, SocietyMapping
 from automator.domain.models import ProcessOutcome
 from automator.domain.suppliers import Supplier, SupplierRegistry
 from automator.services.processing import InvoiceProcessor
@@ -221,17 +221,6 @@ def test_ambiguous_intercompany_invoice_goes_to_review(
     assert config.review_folder in result.destination.parents
 
 
-def test_supplier_equal_to_society_goes_to_review(
-    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
-) -> None:
-    # If the detected supplier is our own society, the buyer was read: send to review.
-    config = make_config()
-    source = dummy_pdf("comprador.pdf")
-    text = "FACTURA\nCod. 01\nRazon Social: COMPRADORA UNO SA\nComp. Nro: 0001-00000009\n"
-    result = _processor(config, text).process(source)
-    assert result.outcome is ProcessOutcome.NEEDS_REVIEW
-
-
 def test_purchase_order_files_into_orders_area(
     make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
 ) -> None:
@@ -254,9 +243,9 @@ def test_purchase_order_fuzzy_matches_society_by_name(
     source = dummy_pdf("orden_fuzzy.pdf")
     result = _processor(config, ORDEN_COMPRA_NO_CUIT_TEXT).process(source)
 
-    assert result.outcome is ProcessOutcome.MOVED
+    assert result.outcome is ProcessOutcome.NEEDS_REVIEW
     assert result.destination is not None
-    assert config.orders_folder / "COMPRADORA UNO SA" in result.destination.parents
+    assert config.review_folder in result.destination.parents
     assert "nombre" in result.message
 
 
@@ -270,7 +259,7 @@ def test_purchase_order_without_society_goes_to_sin_sociedad(
 
     assert result.outcome is ProcessOutcome.UNCLASSIFIED
     assert result.destination is not None
-    assert config.orders_folder / "_SIN_SOCIEDAD" in result.destination.parents
+    assert config.orders_folder / ORDERS_UNKNOWN_FOLDER_NAME in result.destination.parents
 
 
 def test_unstable_download_is_quarantined(
