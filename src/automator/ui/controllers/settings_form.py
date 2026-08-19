@@ -16,18 +16,20 @@ from automator.ui import system_utils
 from automator.ui.dialogs.import_report_dialog import ImportReportDialog
 from automator.ui.dialogs.society_dialog import SocietyDialog
 from automator.ui.presentation import format_validation_error
-from automator.ui.system_utils import open_folder
+from automator.ui.system_utils import UiMailbox, open_folder
 from automator.ui.views.settings import SettingsView
 
 logger = logging.getLogger(__name__)
 
 
 class SettingsForm:
-    def __init__(self, store: ConfigStore, view: SettingsView, widget: tk.Misc) -> None:
+    def __init__(self, store: ConfigStore, view: SettingsView, widget: tk.Misc, mailbox: UiMailbox) -> None:
         self._store = store
         self._view = view
         self._widget = widget
+        self._mailbox = mailbox
         self.societies: list[SocietyMapping] = []
+        self._restart_after_save = False
         self._is_running: Callable[[], bool] = lambda: False
         self._start: Callable[[], None] = lambda: None
         self._stop: Callable[[], None] = lambda: None
@@ -94,13 +96,16 @@ class SettingsForm:
         config = self.collect_config()
         if config is None:
             return
-        running = self._is_running()
-        if running:
+        if self._is_running():
+            self._restart_after_save = True
             self._stop()
         if self.persist(config):
             messagebox.showinfo("Configuracion", "Configuracion guardada correctamente.")
-        if running:
-            self._start()
+
+    def consume_restart(self) -> bool:
+        flagged = self._restart_after_save
+        self._restart_after_save = False
+        return flagged
 
     def add_society(self) -> None:
         dialog = SocietyDialog(self._widget)
@@ -177,7 +182,7 @@ class SettingsForm:
         except MissingColumnError as exc:
             self._ui_error("Excel invalido", str(exc))
             return
-        self._widget.after(0, lambda: self._apply_societies(report.created, report.invalid))
+        self._mailbox.post(lambda: self._apply_societies(report.created, report.invalid))
 
     def _apply_societies(self, created: list[SocietyMapping], invalid: list[tuple[int, str]]) -> None:
         merged = {society.cuit: society for society in self.societies}
@@ -188,7 +193,7 @@ class SettingsForm:
         ImportReportDialog(self._widget, "Importar empresas", summary, invalid)
 
     def _ui_error(self, title: str, message: str) -> None:
-        self._widget.after(0, lambda: messagebox.showerror(title, message))
+        self._mailbox.post(lambda: messagebox.showerror(title, message))
 
 
 def _ask_excel() -> Path | None:

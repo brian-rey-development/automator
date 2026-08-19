@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -13,14 +14,36 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+class UiMailbox:
+    """Thread-safe callbacks drained only from the Tk thread."""
+
+    def __init__(self) -> None:
+        self._items: queue.Queue[Callable[[], object]] = queue.Queue()
+
+    def post(self, fn: Callable[[], object]) -> None:
+        self._items.put(fn)
+
+    def drain(self) -> None:
+        while True:
+            try:
+                fn = self._items.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                fn()
+            except Exception:
+                logger.exception("Fallo un callback de la interfaz")
+
+
 def run_async(target: Callable[[], object]) -> None:
     threading.Thread(target=target, daemon=True).start()
 
 
 def open_folder(path: Path) -> None:
-    """Opens a folder in the system file explorer."""
+    if not path.exists():
+        logger.warning("No se abre una carpeta que no existe: %s", path)
+        return
     try:
-        path.mkdir(parents=True, exist_ok=True)
         if sys.platform.startswith("win"):
             os.startfile(str(path))  # type: ignore[attr-defined]  # Only exists on Windows.
         elif sys.platform == "darwin":

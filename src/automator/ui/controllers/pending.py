@@ -22,6 +22,8 @@ class PendingController:
         self.count = 0
         self._last = 0
         self._active = False
+        self._counting = False
+        self._latest: int | None = None
         self.on_count: Callable[[int], None] = lambda _count: None
 
     def start(self) -> None:
@@ -37,13 +39,29 @@ class PendingController:
     def _poll(self) -> None:
         if not self._active:
             return
-        system_utils.run_async(self._count_and_apply)
+        self._flush()
+        self._kick_count()
         self._widget.after(_PENDING_POLL_MS, self._poll)
 
-    def _count_and_apply(self) -> None:
-        config = self._store.get()
-        total = count_pdfs(config.review_folder) + count_pdfs(config.quarantine_folder)
-        self._widget.after(0, lambda: self._apply(total))
+    def _flush(self) -> None:
+        latest = self._latest
+        if latest is None:
+            return
+        self._latest = None
+        self._apply(latest)
+
+    def _kick_count(self) -> None:
+        if self._counting:
+            return
+        self._counting = True
+        system_utils.run_async(self._count)
+
+    def _count(self) -> None:
+        try:
+            config = self._store.get()
+            self._latest = count_pdfs(config.review_folder) + count_pdfs(config.quarantine_folder)
+        finally:
+            self._counting = False
 
     def _apply(self, count: int) -> None:
         if not self._active:

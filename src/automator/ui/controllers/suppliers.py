@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
@@ -12,6 +13,7 @@ from automator.services.excel_import import ExcelReadError, MissingColumnError, 
 from automator.services.supplier_store import SupplierRegistryStore, SupplierStore
 from automator.ui import system_utils
 from automator.ui.dialogs.import_report_dialog import ImportReportDialog
+from automator.ui.system_utils import UiMailbox
 from automator.ui.views.settings import SettingsView
 
 logger = logging.getLogger(__name__)
@@ -26,11 +28,13 @@ class SuppliersController:
         registry: SupplierRegistryStore | None,
         view: SettingsView,
         widget: tk.Misc,
+        mailbox: UiMailbox,
     ) -> None:
         self._store = store
         self._registry = registry
         self._view = view
         self._widget = widget
+        self._mailbox = mailbox
 
     def refresh(self) -> None:
         if self._registry is None or self._store is None:
@@ -76,8 +80,13 @@ class SuppliersController:
             return
         if self._store is None or self._registry is None:
             return
-        created, updated = self._store.bulk_upsert(report.created)
-        self._registry.reload()
+        try:
+            created, updated = self._store.bulk_upsert(report.created)
+            self._registry.reload()
+        except (OSError, sqlite3.Error) as exc:
+            logger.exception("No se pudo guardar el registro de proveedores")
+            self._ui_error("Error al guardar", f"No se pudo guardar el registro: {exc}")
+            return
         self._on_ui(lambda: self._finish_import(created, updated, report.invalid))
 
     def _finish_import(self, created: int, updated: int, invalid: list[tuple[int, str]]) -> None:
@@ -86,7 +95,7 @@ class SuppliersController:
         ImportReportDialog(self._widget, "Importar proveedores", summary, invalid)
 
     def _on_ui(self, fn: Callable[[], object]) -> None:
-        self._widget.after(0, fn)
+        self._mailbox.post(lambda: fn())
 
     def _ui_error(self, title: str, message: str) -> None:
         self._on_ui(lambda: messagebox.showerror(title, message))

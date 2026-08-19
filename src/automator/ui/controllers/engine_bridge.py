@@ -14,6 +14,7 @@ from automator.ui import system_utils
 from automator.ui.controllers.settings_form import SettingsForm
 from automator.ui.presentation import count_key, status_label
 from automator.ui.strings import OUTCOME_ROW_TAG
+from automator.ui.system_utils import UiMailbox
 from automator.ui.views.monitor import MonitorView
 from automator.ui.views.sidebar import SidebarView
 
@@ -32,6 +33,7 @@ class EngineBridge:
         sidebar: SidebarView,
         settings: SettingsForm,
         widget: tk.Misc,
+        mailbox: UiMailbox,
     ) -> None:
         self._engine = engine
         self._events = events
@@ -39,6 +41,7 @@ class EngineBridge:
         self._sidebar = sidebar
         self._settings = settings
         self._widget = widget
+        self._mailbox = mailbox
         self.counts = dict.fromkeys(_COUNTS, 0)
         self.on_running_changed: Callable[[], None] = lambda: None
         self._active = True
@@ -77,6 +80,7 @@ class EngineBridge:
             return
         try:
             self._drain()
+            self._mailbox.drain()
         finally:
             if self._active:
                 self._widget.after(_POLL_MS, self.poll_events)
@@ -110,6 +114,8 @@ class EngineBridge:
             self._monitor.detail_var.set(event.message)
         elif event.type is EngineEventType.STOPPED:
             self.set_running(False)
+            if self._settings.consume_restart():
+                self.start()
         elif event.type is EngineEventType.DETECTED:
             self.increment("detected")
         elif event.type is EngineEventType.RESULT and event.result is not None:
@@ -119,6 +125,7 @@ class EngineBridge:
 
     def _on_error(self, event: EngineEvent) -> None:
         if event.path is None:
+            self._settings.consume_restart()
             self.set_running(self._engine.is_running)
             messagebox.showerror("Automator", event.message)
             return

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -104,5 +105,30 @@ def test_perform_undo_without_destination_does_not_touch_ledger(tmp_path: Path) 
     ledger.close()
 
 
+def test_perform_undo_restores_file_if_mark_reverted_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    inbox = tmp_path / "entrada"
+    inbox.mkdir()
+    archived = tmp_path / "salida" / "factura.pdf"
+    archived.parent.mkdir()
+    archived.write_bytes(b"%PDF")
+    ledger = Ledger(tmp_path / "history.db")
+    ledger.record(_moved(archived))
+    record = ledger.last_undoable()
+    assert record is not None
+    monkeypatch.setattr(ledger, "mark_reverted", _raise_sqlite_error)
+
+    result = perform_undo(record, inbox, ledger)
+
+    assert result.outcome is UndoOutcome.FAILED
+    assert archived.exists()
+    assert not (inbox / "factura.pdf").exists()
+    assert ledger.last_undoable() is not None
+    ledger.close()
+
+
 def _raise_os_error(*_args: object, **_kwargs: object) -> Path:
     raise OSError("disk full")
+
+
+def _raise_sqlite_error(*_args: object, **_kwargs: object) -> None:
+    raise sqlite3.OperationalError("locked")

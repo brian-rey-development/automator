@@ -118,6 +118,7 @@ def test_import_suppliers_updates_registry(window: MainWindow, tmp_path: Path, m
     monkeypatch.setattr(suppliers_mod, "ImportReportDialog", lambda *_args, **_kwargs: None)
 
     window._suppliers.import_suppliers()
+    window._mailbox.drain()
     window.update()
 
     assert window._supplier_store.count() == 1
@@ -134,6 +135,7 @@ def test_import_societies_adds_to_list(window: MainWindow, tmp_path: Path, monke
     monkeypatch.setattr(settings_form_mod, "ImportReportDialog", lambda *_args, **_kwargs: None)
 
     window._settings_form.import_societies()
+    window._mailbox.drain()
     window.update()
 
     assert [society.cuit for society in window._settings_form.societies] == ["30111111118"]

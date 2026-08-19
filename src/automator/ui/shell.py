@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import queue
 import sqlite3
-from typing import Protocol
 
 import customtkinter as ctk
 
@@ -34,11 +33,6 @@ _CLOSE_LIMIT_MS = 12_000
 _EVENT_POLL_MS = 150
 
 
-class _View(Protocol):
-    def grid(self, *, row: int, column: int, sticky: str, padx: int, pady: int) -> None: ...
-    def grid_remove(self) -> None: ...
-
-
 class MainWindow(ctk.CTkFrame):
     def __init__(self, master: ctk.CTk, store: ConfigStore, first_run: bool = False) -> None:
         super().__init__(master, fg_color=Palette.BG, corner_radius=0)
@@ -63,12 +57,6 @@ class MainWindow(ctk.CTkFrame):
             self._history_actions.refresh()
         self._sidebar.highlight(key)
 
-    def _open_input(self) -> None:
-        self._settings_form.open_input()
-
-    def _open_output(self) -> None:
-        self._settings_form.open_output()
-
     def on_close(self) -> None:
         if self._closing:
             return
@@ -79,6 +67,7 @@ class MainWindow(ctk.CTkFrame):
         self._await_close()
 
     def _init_backend(self) -> None:
+        self._mailbox = system_utils.UiMailbox()
         self._events: queue.Queue[EngineEvent] = queue.Queue()
         self._ledger = _open_ledger()
         self._supplier_store = _open_supplier_store()
@@ -124,7 +113,7 @@ class MainWindow(ctk.CTkFrame):
             lambda: self._history_actions.clear_history(),
         )
         self._config_view = SettingsView(content, fonts, self._settings_hooks())
-        self._views: dict[str, _View] = {
+        self._views: dict[str, MonitorView | HistoryView | SettingsView] = {
             "monitor": self._monitor_view,
             "history": self._history_view,
             "config": self._config_view,
@@ -143,17 +132,20 @@ class MainWindow(ctk.CTkFrame):
             on_search_suppliers=lambda: self._suppliers.refresh(),
             on_open_logs=lambda: self._settings_form.open_logs(),
             on_pick=lambda var: self._settings_form.pick_folder(var),
-            on_open_input=self._open_input,
-            on_open_output=self._open_output,
+            on_open_input=lambda: self._settings_form.open_input(),
+            on_open_output=lambda: self._settings_form.open_output(),
             on_open=lambda var: self._settings_form.open_folder_var(var),
         )
 
     def _wire(self) -> None:
-        self._settings_form = SettingsForm(self._store, self._config_view, self)
-        self._suppliers = SuppliersController(self._supplier_store, self._registry_store, self._config_view, self)
+        mailbox = self._mailbox
+        self._settings_form = SettingsForm(self._store, self._config_view, self, mailbox)
+        self._suppliers = SuppliersController(
+            self._supplier_store, self._registry_store, self._config_view, self, mailbox
+        )
         self._history_actions = HistoryActions(self._ledger, self._engine, self._store, self._history_view, self)
         self._engine_bridge = EngineBridge(
-            self._engine, self._events, self._monitor_view, self._sidebar, self._settings_form, self
+            self._engine, self._events, self._monitor_view, self._sidebar, self._settings_form, self, mailbox
         )
         self._pending = PendingController(self._store, self._monitor_view, self)
         self._settings_form.bind_monitor(
@@ -177,11 +169,17 @@ class MainWindow(ctk.CTkFrame):
         self._finish_close()
 
     def _finish_close(self) -> None:
+        if self._engine.is_running:
+            logger.warning("El motor sigue activo; se cierra la ventana sin cerrar el historial")
+        else:
+            self._close_stores()
+        self.winfo_toplevel().destroy()
+
+    def _close_stores(self) -> None:
         if self._ledger is not None:
             self._ledger.close()
         if self._supplier_store is not None:
             self._supplier_store.close()
-        self.winfo_toplevel().destroy()
 
 
 def _open_ledger() -> Ledger | None:
