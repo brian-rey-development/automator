@@ -6,7 +6,7 @@ from pathlib import Path
 
 from automator.domain.models import ProcessOutcome, ProcessResult
 from automator.services.ledger import LedgerRecord
-from automator.ui.main_window import _count_key, _count_pdfs, _history_row, _status_label
+from automator.ui.presentation import count_key, count_pdfs, history_row, status_label
 
 
 def test_dry_run_review_counts_as_review_not_archived() -> None:
@@ -18,8 +18,8 @@ def test_dry_run_review_counts_as_review_not_archived() -> None:
         message="sim",
         intended=ProcessOutcome.NEEDS_REVIEW,
     )
-    assert _count_key(result) == "review"
-    assert _status_label(result) == "Simulado · Revisar"
+    assert count_key(result) == "review"
+    assert status_label(result) == "Simulado · Revisar"
 
 
 def test_history_row_formats_record() -> None:
@@ -35,7 +35,7 @@ def test_history_row_formats_record() -> None:
         message="ok",
         reverted=False,
     )
-    row = _history_row(record)
+    row = history_row(record)
     assert row[1] == "factura.pdf"
     assert row[3] == "Archivado"
 
@@ -45,5 +45,5 @@ def test_count_pdfs_is_case_insensitive_and_recursive(tmp_path: Path) -> None:
     (tmp_path / "a.pdf").write_bytes(b"%PDF")
     (tmp_path / "sub" / "b.PDF").write_bytes(b"%PDF")
     (tmp_path / "sub" / "c.txt").write_bytes(b"x")
-    assert _count_pdfs(tmp_path) == 2
-    assert _count_pdfs(tmp_path / "no-existe") == 0
+    assert count_pdfs(tmp_path) == 2
+    assert count_pdfs(tmp_path / "no-existe") == 0
