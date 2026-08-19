@@ -1,4 +1,4 @@
-"""Tests for the processing engine (without real threads or watchdog)."""
+"""Tests for the processing engine."""
 
 from __future__ import annotations
 
@@ -9,12 +9,38 @@ from pathlib import Path
 import pytest
 
 from automator.config import AppConfig
-from automator.domain.models import ProcessOutcome
+from automator.domain.models import ProcessOutcome, ProcessResult
 from automator.domain.suppliers import Supplier, SupplierRegistry
 from automator.services.engine import EngineEvent, EngineEventType, ProcessingEngine
 from automator.services.engine import lifecycle as engine_lifecycle
+from automator.services.engine.worker import Worker
 from automator.services.ledger import Ledger
 from fixtures.invoices import FACTURA_A_TEXT
+
+_JOIN_TIMEOUT_S = 0.1
+
+
+class _NullWatcher:
+    def start(self) -> None:
+        return
+
+    def stop(self) -> None:
+        return
+
+
+def _null_watcher(_folder: Path, _on_pdf: Callable[[Path], None]) -> _NullWatcher:
+    return _NullWatcher()
+
+
+def _block_worker(monkeypatch: pytest.MonkeyPatch) -> threading.Event:
+    release = threading.Event()
+
+    def stuck_run(_self: Worker, _work_queue: object) -> None:
+        release.wait(timeout=30)
+
+    monkeypatch.setattr(Worker, "run", stuck_run)
+    monkeypatch.setattr(engine_lifecycle, "WORKER_JOIN_TIMEOUT_S", _JOIN_TIMEOUT_S)
+    return release
 
 
 def _engine(config: AppConfig, sink: Callable[[EngineEvent], None], text: str) -> ProcessingEngine:
@@ -261,3 +287,78 @@ def test_process_existing_emits_error_when_input_is_unreadable(
     count = _engine(config, events.append, FACTURA_A_TEXT).process_existing()
     assert count == 0
     assert any(event.type is EngineEventType.ERROR for event in events)
+
+
+def test_copy_mode_retries_error_outcome(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path], tmp_path: Path
+) -> None:
+    ledger = Ledger(tmp_path / "history.db")
+    config = make_config(copy_files=True)
+    source = dummy_pdf("factura.pdf")
+    events: list[EngineEvent] = []
+    engine = ProcessingEngine(lambda: config, events.append, extractor=lambda _path: FACTURA_A_TEXT, ledger=ledger)
+
+    def fail(_path: Path) -> ProcessResult:
+        return ProcessResult(source, ProcessOutcome.ERROR, None, None, "fallo al archivar")
+
+    engine._processor.process = fail  # type: ignore[method-assign]
+    assert engine.process_now(source).outcome is ProcessOutcome.ERROR
+    events.clear()
+    engine.process_existing()
+    assert any(event.type is EngineEventType.DETECTED for event in events)
+    ledger.close()
+
+
+def test_stop_join_timeout_keeps_running_and_rejects_start(
+    make_config: Callable[..., AppConfig], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release = _block_worker(monkeypatch)
+    events: list[EngineEvent] = []
+    engine = _engine(make_config(), events.append, FACTURA_A_TEXT)
+    engine.start()
+    assert engine.is_running
+    engine.stop()
+    types = [event.type for event in events]
+    assert EngineEventType.ERROR in types
+    assert EngineEventType.STOPPED not in types
+    assert engine.is_running
+    engine.start()
+    assert engine.is_running
+    assert [event.type for event in events].count(EngineEventType.STARTED) == 1
+    release.set()
+    engine.stop()
+    assert not engine.is_running
+    assert EngineEventType.STOPPED in [event.type for event in events]
+
+
+def test_failed_start_join_timeout_keeps_refs(
+    make_config: Callable[..., AppConfig], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release = _block_worker(monkeypatch)
+    events: list[EngineEvent] = []
+    engine = ProcessingEngine(
+        lambda: make_config(),
+        events.append,
+        extractor=lambda _path: FACTURA_A_TEXT,
+        watcher_factory=_null_watcher,
+    )
+    real_thread = threading.Thread
+    started = {"n": 0}
+
+    def counting_thread(*args: object, **kwargs: object) -> threading.Thread:
+        started["n"] += 1
+        if started["n"] == 2:
+            raise OSError("no rescan")
+        return real_thread(*args, **kwargs)
+
+    monkeypatch.setattr(engine_lifecycle.threading, "Thread", counting_thread)
+    engine.start()
+    assert engine.is_running
+    assert any(event.type is EngineEventType.ERROR for event in events)
+    assert all(event.type is not EngineEventType.STARTED for event in events)
+    engine.start()
+    assert engine.is_running
+    release.set()
+    engine.stop()
+    assert not engine.is_running
+    assert any(event.type is EngineEventType.STOPPED for event in events)

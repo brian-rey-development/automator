@@ -24,6 +24,7 @@ _COPY_PLACED = frozenset(
         ProcessOutcome.QUARANTINED,
     }
 )
+_REMEMBERED = _COPY_PLACED | frozenset({ProcessOutcome.DRY_RUN})
 
 
 def source_signature(path: Path) -> str | None:
@@ -60,13 +61,12 @@ class SourceMemory:
         return signature is not None and self._ledger.source_seen(signature)
 
     def remember(self, path: Path, outcome: ProcessOutcome) -> None:
-        if outcome is ProcessOutcome.SKIPPED_MISSING:
-            return
         config = self._config_provider()
-        signature = source_signature(path)
-        if signature is not None and (config.dry_run or config.copy_files):
-            with self._lock:
-                self._seen_signatures.add(signature)
+        if outcome in _REMEMBERED and (config.dry_run or config.copy_files):
+            signature = source_signature(path)
+            if signature is not None:
+                with self._lock:
+                    self._seen_signatures.add(signature)
         self._mark_copied(path, outcome, config.copy_files)
 
     def _mark_copied(self, path: Path, outcome: ProcessOutcome, copy_files: bool) -> None:

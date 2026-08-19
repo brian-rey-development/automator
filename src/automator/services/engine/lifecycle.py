@@ -30,6 +30,7 @@ from automator.services.watcher import FolderWatcher
 logger = logging.getLogger(__name__)
 
 WatcherFactory = Callable[[Path, Callable[[Path], None]], FolderWatcher]
+_STOP_TIMEOUT_MSG = "El monitor no pudo detenerse a tiempo."
 
 
 class ProcessingEngine:
@@ -37,7 +38,7 @@ class ProcessingEngine:
 
     The queue and the stop signal are recreated on each start (a "generation"), so
     an old worker that takes long to finish never shares a queue with a new one. A
-    start is rejected while the previous worker is still alive.
+    start is rejected while the previous generation still owns its threads.
     """
 
     def __init__(
@@ -53,6 +54,18 @@ class ProcessingEngine:
         self._sink = sink
         self._ledger = ledger
         self._watcher_factory = watcher_factory
+        self._generation_id = 0
+        self._starting = False
+        self._lifecycle_lock = threading.Lock()
+        self._wire(config_provider, extractor, ledger, registry_provider)
+
+    def _wire(
+        self,
+        config_provider: ConfigProvider,
+        extractor: TextExtractor,
+        ledger: Ledger | None,
+        registry_provider: RegistryProvider | None,
+    ) -> None:
         self._processor = InvoiceProcessor(
             config_provider, extractor, self._duplicate_check, registry_provider or empty_registry
         )
@@ -62,7 +75,6 @@ class ProcessingEngine:
         self._rescanner: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
-        self._generation_id = 0
         self._input_unreadable = False
         self._memory = SourceMemory(self._lock, config_provider, ledger)
         self._inbox = Inbox(self._lock, self._memory, self._emit, config_provider, self._get_queue)
@@ -73,33 +85,44 @@ class ProcessingEngine:
 
     @property
     def is_running(self) -> bool:
-        return self._has_live_threads()
+        return self._worker is not None or self._rescanner is not None
 
-    def _has_live_threads(self) -> bool:
-        worker = self._worker
-        rescanner = self._rescanner
-        if worker is not None and worker.is_alive():
+    def _claim_start(self) -> bool:
+        with self._lock:
+            if self._starting or self._worker is not None or self._rescanner is not None:
+                return False
+            self._starting = True
             return True
-        return rescanner is not None and rescanner.is_alive()
+
+    def _release_start(self) -> None:
+        with self._lock:
+            self._starting = False
 
     def start(self) -> None:
-        with self._lock:
-            if self._has_live_threads():
+        if not self._claim_start():
+            return
+        try:
+            config = self._try_launch()
+            if config is None:
                 return
-            config = self._config_provider()
+            self._emit(EngineEvent(EngineEventType.STARTED, f"Monitoreando: {config.input_folder}"))
+            self.process_existing()
+        finally:
+            self._release_start()
+
+    def _try_launch(self) -> AppConfig | None:
+        with self._lifecycle_lock:
             try:
+                config = self._config_provider()
                 self._launch(config)
             except Exception as exc:
                 logger.exception("No se pudo iniciar el motor")
                 self._cleanup_failed_start()
                 self._emit(EngineEvent(EngineEventType.ERROR, f"No se pudo iniciar el monitor: {exc}"))
-                return
-        self._emit(EngineEvent(EngineEventType.STARTED, f"Monitoreando: {config.input_folder}"))
-        self.process_existing()
+                return None
+            return config
 
     def _launch(self, config: AppConfig) -> None:
-        # Fresh queue and stop signal per generation so it never crosses with a
-        # previous worker that is still winding down.
         config.ensure_folders()
         self._generation_id += 1
         self._queue = queue.Queue()
@@ -119,18 +142,19 @@ class ProcessingEngine:
         self._rescanner = threading.Thread(target=self._rescan_loop, name="automator-rescan", daemon=True)
         self._rescanner.start()
 
-    def _cleanup_failed_start(self) -> None:
+    def _halt_generation(self, watcher: FolderWatcher | None, work_queue: queue.Queue[object]) -> None:
         self._stop_event.set()
-        self._queue.put(SENTINEL)
-        if self._watcher is not None:
-            try:
-                self._watcher.stop()
-            except Exception:
-                logger.exception("Fallo al limpiar el watcher tras un arranque fallido")
-        self._join_threads()
-        self._watcher = None
-        self._worker = None
-        self._rescanner = None
+        try:
+            if watcher is not None:
+                watcher.stop()
+        except Exception:
+            logger.exception("Fallo al detener el watcher")
+        finally:
+            work_queue.put(SENTINEL)
+
+    def _cleanup_failed_start(self) -> None:
+        self._halt_generation(self._watcher, self._queue)
+        self._clear_if_stopped()
 
     def _join_threads(self) -> bool:
         worker = self._worker
@@ -143,26 +167,27 @@ class ProcessingEngine:
         rescanner_alive = rescanner is not None and rescanner.is_alive()
         return not worker_alive and not rescanner_alive
 
+    def _clear_if_stopped(self) -> bool:
+        if self._join_threads():
+            with self._lock:
+                self._watcher = None
+                self._worker = None
+                self._rescanner = None
+            return True
+        logger.warning("El worker o el rescanner no termino dentro del timeout")
+        self._emit(EngineEvent(EngineEventType.ERROR, _STOP_TIMEOUT_MSG))
+        return False
+
     def stop(self) -> None:
-        with self._lock:
-            worker = self._worker
-            watcher = self._watcher
-            if worker is None and self._rescanner is None:
-                return
-            self._stop_event.set()
-            work_queue = self._queue
-        if watcher is not None:
-            watcher.stop()
-        work_queue.put(SENTINEL)
-        if not self._join_threads():
-            logger.warning("El worker o el rescanner no termino dentro del timeout")
-            self._emit(EngineEvent(EngineEventType.ERROR, "El monitor no pudo detenerse a tiempo."))
-            return
-        with self._lock:
-            self._watcher = None
-            self._worker = None
-            self._rescanner = None
-        self._emit(EngineEvent(EngineEventType.STOPPED, "Monitor detenido."))
+        with self._lifecycle_lock:
+            with self._lock:
+                if self._worker is None and self._rescanner is None:
+                    return
+                watcher = self._watcher
+                work_queue = self._queue
+            self._halt_generation(watcher, work_queue)
+            if self._clear_if_stopped():
+                self._emit(EngineEvent(EngineEventType.STOPPED, "Monitor detenido."))
 
     def process_existing(self) -> int:
         """Enqueues all the PDFs already present in the input folder."""
