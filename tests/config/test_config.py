@@ -196,7 +196,7 @@ def test_update_does_not_commit_memory_if_save_fails(tmp_path: Path, monkeypatch
     store.save()
     incoming = default_config().model_copy(update={"dry_run": True})
     monkeypatch.setattr(
-        "automator.config.save_config",
+        "automator.config.store.save_config",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk")),
     )
     with pytest.raises(OSError, match="disk"):
@@ -215,3 +215,26 @@ def test_default_unknown_and_quarantine_folder_names() -> None:
     config = default_config()
     assert config.unknown_folder.name == UNKNOWN_FOLDER_NAME
     assert config.quarantine_folder.name == QUARANTINE_FOLDER_NAME
+
+
+def test_ensure_folders_service_creates_input(tmp_path: Path) -> None:
+    from automator.services.folders import ensure_folders
+
+    base = tmp_path / "salida"
+    config = AppConfig(
+        input_folder=tmp_path / "entrada",
+        base_output_folder=base,
+        unknown_folder=base / "_sin",
+        quarantine_folder=base / "_err",
+    )
+    ensure_folders(config)
+    assert config.input_folder.is_dir()
+    assert config.base_output_folder.is_dir()
+
+
+def test_assets_dir_points_at_repo_assets() -> None:
+    from automator.paths import assets_dir
+
+    directory = assets_dir()
+    assert directory.name == "assets"
+    assert (directory / "automator.png").exists() or (directory / "automator.ico").exists()

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox
@@ -13,6 +12,7 @@ import customtkinter as ctk
 from automator import __version__
 from automator.config import config_path, load_store
 from automator.logging_config import log_location, setup_logging
+from automator.paths import assets_dir
 from automator.ui.main_window import MainWindow
 from automator.ui.theme import init_appearance
 
@@ -51,8 +51,7 @@ def _apply_icon(root: ctk.CTk) -> None:
 
 
 def _icon_path() -> Path | None:
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3]))
-    candidate = base / "assets" / "automator.png"
+    candidate = assets_dir() / "automator.png"
     return candidate if candidate.exists() else None
 
 
