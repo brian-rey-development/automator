@@ -11,8 +11,8 @@ import pytest
 from automator.config import AppConfig
 from automator.domain.models import ProcessOutcome
 from automator.domain.suppliers import Supplier, SupplierRegistry
-from automator.services import engine as engine_module
 from automator.services.engine import EngineEvent, EngineEventType, ProcessingEngine
+from automator.services.engine import lifecycle as engine_lifecycle
 from automator.services.ledger import Ledger
 from fixtures.invoices import FACTURA_A_TEXT
 
@@ -79,17 +79,22 @@ def test_start_and_stop_lifecycle_emits_events(make_config: Callable[..., AppCon
     emitted = [event.type for event in events]
     assert EngineEventType.STARTED in emitted
     assert EngineEventType.STOPPED in emitted
+    assert all(event.generation_id == 1 for event in events)
 
 
 def test_failed_start_emits_error_and_leaves_no_running_engine(
-    make_config: Callable[..., AppConfig], monkeypatch: pytest.MonkeyPatch
+    make_config: Callable[..., AppConfig],
 ) -> None:
     def broken_watcher(*_args: object, **_kwargs: object) -> object:
         raise OSError("no se pudo vigilar la carpeta")
 
-    monkeypatch.setattr(engine_module, "FolderWatcher", broken_watcher)
     events: list[EngineEvent] = []
-    engine = _engine(make_config(), events.append, FACTURA_A_TEXT)
+    engine = ProcessingEngine(
+        lambda: make_config(),
+        events.append,
+        extractor=lambda _path: FACTURA_A_TEXT,
+        watcher_factory=broken_watcher,
+    )
 
     engine.start()
 
@@ -180,7 +185,8 @@ def test_reprocess_pending_finds_pdfs_nested_in_supplier_subfolders(
 
 
 def test_stop_joins_rescanner_before_restart(make_config: Callable[..., AppConfig]) -> None:
-    engine = _engine(make_config(), lambda _event: None, FACTURA_A_TEXT)
+    events: list[EngineEvent] = []
+    engine = _engine(make_config(), events.append, FACTURA_A_TEXT)
     engine.start()
     first = engine._rescanner
     assert first is not None
@@ -192,6 +198,8 @@ def test_stop_joins_rescanner_before_restart(make_config: Callable[..., AppConfi
     assert second is not first
     engine.stop()
     assert not engine.is_running
+    started = [event.generation_id for event in events if event.type is EngineEventType.STARTED]
+    assert started == [1, 2]
 
 
 def test_failed_launch_after_worker_start_does_not_orphan(
@@ -208,7 +216,7 @@ def test_failed_launch_after_worker_start_does_not_orphan(
             raise OSError("no rescan")
         return real_thread(*args, **kwargs)
 
-    monkeypatch.setattr(engine_module.threading, "Thread", counting_thread)
+    monkeypatch.setattr(engine_lifecycle.threading, "Thread", counting_thread)
     engine.start()
     assert not engine.is_running
     assert any(event.type is EngineEventType.ERROR for event in events)

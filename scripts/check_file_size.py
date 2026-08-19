@@ -11,7 +11,6 @@ SRC = ROOT / "src" / "automator"
 ALLOWLIST = {
     "src/automator/ui/main_window.py",
     "src/automator/config.py",
-    "src/automator/services/engine.py",
     "src/automator/domain/parser.py",
 }
 

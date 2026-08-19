@@ -32,7 +32,7 @@ def _never_duplicate(_invoice: ParsedInvoice) -> bool:
     return False
 
 
-def _empty_registry() -> SupplierRegistry:
+def empty_registry() -> SupplierRegistry:
     return _EMPTY_REGISTRY
 
 
@@ -44,7 +44,7 @@ class InvoiceProcessor:
         config_provider: ConfigProvider,
         extractor: TextExtractor = extract_text,
         is_duplicate: DuplicateCheck = _never_duplicate,
-        registry_provider: RegistryProvider = _empty_registry,
+        registry_provider: RegistryProvider = empty_registry,
     ) -> None:
         self._config_provider = config_provider
         self._extractor = extractor
