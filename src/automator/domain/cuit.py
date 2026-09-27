@@ -64,10 +64,20 @@ def extract_cuits(text: str) -> set[str]:
 
 
 def unique_issuer_cuit(text: str, buyer_cuit: str | None) -> str | None:
-    leftover = extract_cuits(text)
-    if buyer_cuit:
-        leftover.discard(buyer_cuit)
+    found = extract_cuits(text)
+    if is_lone_unknown_cuit(found, {buyer_cuit} if buyer_cuit else set()):
+        return None
+    leftover = found - {buyer_cuit}
     return next(iter(leftover)) if len(leftover) == 1 else None
+
+
+def is_lone_unknown_cuit(found: set[str], known_parties: set[str]) -> bool:
+    """A single CUIT that is not a known party could be either side of the voucher.
+
+    Pre-printed forms carry the issuer header as an image, so the only CUIT in the text
+    is the customer's. Taking it as the issuer would name the file after the customer.
+    """
+    return len(found) == 1 and not found & known_parties
 
 
 def require_valid_cuit(value: str) -> str:

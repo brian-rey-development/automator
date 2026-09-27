@@ -14,5 +14,6 @@ Working records of the decisions that shape Automator, grounded in the current c
 | [0008](0008-copy-mode-source-signatures.md) | Copy mode source signatures |
 | [0009](0009-versioned-sqlite-ledger.md) | Versioned SQLite ledger |
 | [0010](0010-ui-shell-controllers.md) | UI shell, views, and controllers |
+| [0011](0011-afip-qr-authoritative-source.md) | AFIP QR as the authoritative voucher source |
 
 Format is MADR-lite. Each file has Context, Decision, Consequences, and Alternatives considered. New ADRs get the next four-digit number and a row in this table.

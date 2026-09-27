@@ -41,7 +41,8 @@ def test_aliases_are_normalized_from_all_names() -> None:
 
 def test_registry_matches_by_cuit() -> None:
     registry = SupplierRegistry([_supplier("30999999995", "PROVEEDOR EJEMPLO SRL")])
-    match = registry.match("bla CUIT 30-99999999-5 bla", exclude_cuits=set())
+    text = "CUIT 30-99999999-5 comprador CUIT 30-11111111-8"
+    match = registry.match(text, exclude_cuits={"30111111118"})
     assert match is not None
     assert match.legal_name == "PROVEEDOR EJEMPLO SRL"
 
@@ -119,3 +120,18 @@ def test_short_alias_does_not_match_every_invoice() -> None:
         [_supplier("30999999995", "Proveedor Ejemplo SA", extra_aliases=("SA",))],
     )
     assert registry.match("FACTURA A SA COMPROBANTE", exclude_cuits=set()) is None
+
+
+def test_lone_cuit_of_unknown_role_is_not_matched() -> None:
+    # On a pre-printed form the only CUIT may be the customer's; if that customer is
+    # also a registered supplier, matching it would name the file after the customer.
+    registry = SupplierRegistry([_supplier("30999999995", "CLIENTE QUE TAMBIEN VENDE SA")])
+    assert registry.match("Sr/es CLIENTE QUE TAMBIEN VENDE SA CUIT 30-99999999-5", exclude_cuits=set()) is None
+
+
+def test_by_cuit_returns_the_registered_supplier() -> None:
+    registry = SupplierRegistry([_supplier("30999999995", "PROVEEDOR EJEMPLO SRL")])
+    match = registry.by_cuit("30999999995")
+    assert match is not None
+    assert match.legal_name == "PROVEEDOR EJEMPLO SRL"
+    assert registry.by_cuit("30707730214") is None

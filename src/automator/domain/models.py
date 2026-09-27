@@ -48,6 +48,7 @@ class ParsedInvoice:
     document_type: DocumentType = DocumentType.FACTURA
     buyer_name: str | None = None
     issuer_cuit: str | None = None
+    qr_verified: bool = False
 
     @property
     def type_label(self) -> str:

@@ -8,23 +8,31 @@ from automator.domain.filenames import build_filename
 from automator.domain.models import DocumentType, VoucherKind
 from automator.domain.parser import parse_invoice
 from fixtures.invoices import (
+    ABBREVIATED_COMPR_LABEL_TEXT,
     AMBIGUOUS_STANDALONE_TEXT,
     COLUMN_BLEED_ORDER_TEXT,
     COLUMN_BLEED_SUPPLIER_TEXT,
     COMBINED_NUMBER_TEXT,
     COMPROBANTE_WORD_TEXT,
+    CREDIT_NOTE_QUOTING_INVOICE_TEXT,
     CUIT_ONE,
     CUIT_TWO,
     FACTURA_A_TEXT,
     INLINE_NUMERO_TEXT,
+    INVOICE_QUOTING_ORDER_TEXT,
     NO_RAZON_SOCIAL_TEXT,
     NOTA_CREDITO_B_TEXT,
     NOTA_DEBITO_B_TEXT,
     ONLY_IIBB_TEXT,
     ORDEN_COMPRA_NO_CUIT_TEXT,
     ORDEN_COMPRA_TEXT,
+    PREPRINTED_FORM_TEXT,
+    REMITO_NEXT_TO_NUMBER_TEXT,
+    SEMICOLON_SCRAMBLED_TEXT,
     SPLIT_NUMBER_TEXT,
     STANDALONE_TABLE_TEXT,
+    SUPPLIER_CUIT,
+    TITLE_NUMBER_TEXT,
 )
 
 
@@ -232,3 +240,68 @@ def test_factura_that_mentions_orden_de_compra_stays_a_factura() -> None:
     assert invoice.document_type is DocumentType.FACTURA
     assert invoice.supplier == "PROVEEDOR EJEMPLO SRL"
     assert invoice.full_number == "0001-00000123"
+
+
+def test_invoice_quoting_an_order_is_still_an_invoice() -> None:
+    # The CAE proves an AFIP-authorized voucher; purchase orders never carry one.
+    invoice = parse_invoice(INVOICE_QUOTING_ORDER_TEXT, [CUIT_ONE])
+    assert invoice.document_type is DocumentType.FACTURA
+    assert invoice.type_label == "FC A"
+    assert invoice.full_number == "00003-00010650"
+
+
+def test_reads_abbreviated_compr_label() -> None:
+    invoice = parse_invoice(ABBREVIATED_COMPR_LABEL_TEXT, [CUIT_ONE])
+    assert invoice.voucher.label == "NC A"
+    assert invoice.full_number == "0006-00007910"
+
+
+def test_reads_semicolon_separated_scrambled_number() -> None:
+    invoice = parse_invoice(SEMICOLON_SCRAMBLED_TEXT)
+    assert invoice.full_number == "0002-00016787"
+
+
+def test_reads_unpadded_number_from_invoice_title() -> None:
+    invoice = parse_invoice(TITLE_NUMBER_TEXT, [CUIT_ONE])
+    assert invoice.full_number == "0009-00008569"
+
+
+def test_credit_note_does_not_take_the_quoted_invoice_number() -> None:
+    invoice = parse_invoice(CREDIT_NOTE_QUOTING_INVOICE_TEXT)
+    assert invoice.voucher.label == "NC A"
+    assert not invoice.has_number
+
+
+def test_delivery_note_number_is_not_a_candidate() -> None:
+    invoice = parse_invoice(REMITO_NEXT_TO_NUMBER_TEXT, [CUIT_ONE])
+    assert invoice.full_number == "00002-00025065"
+
+
+def test_lone_customer_cuit_is_not_taken_as_issuer() -> None:
+    # Pre-printed form whose customer is not one of our companies: the only CUIT in
+    # the text is the customer's, so it must not become the issuer.
+    invoice = parse_invoice(PREPRINTED_FORM_TEXT, [CUIT_ONE])
+    assert invoice.issuer_cuit is None
+
+
+def test_issuer_cuit_still_found_when_buyer_is_known() -> None:
+    invoice = parse_invoice(TITLE_NUMBER_TEXT, [CUIT_ONE])
+    assert invoice.issuer_cuit == SUPPLIER_CUIT
+
+
+@pytest.mark.parametrize(("code", "expected_label"), [("Cod. 201", "FC A"), ("Cod. 203", "NC A"), ("Cod. 211", "FC C")])
+def test_electronic_credit_invoice_codes_map_to_voucher(code: str, expected_label: str) -> None:
+    assert parse_invoice(f"COMPROBANTE\n{code}\n").voucher.label == expected_label
+
+
+def test_order_mentioning_a_cae_word_without_its_digits_stays_an_order() -> None:
+    text = ORDEN_COMPRA_TEXT + "Adjuntar factura con CAE vigente\n"
+    assert parse_invoice(text, [CUIT_ONE]).document_type is DocumentType.ORDEN_COMPRA
+
+
+def test_invoice_quoting_an_order_in_its_header_format_is_an_invoice() -> None:
+    # The invoice quotes the order with the exact header our orders use.
+    text = "FACTURA\nCOD.001  N: FAC A 0001-00009861\nORD COMPRA NRO: 2026-00003684\nCAE: 86305361865790\n"
+    invoice = parse_invoice(text, [CUIT_ONE])
+    assert invoice.document_type is DocumentType.FACTURA
+    assert invoice.full_number == "0001-00009861"

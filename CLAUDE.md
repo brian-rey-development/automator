@@ -99,6 +99,9 @@ Paths resolved in `paths.py` (`config_path`, `ledger_path`, `log_dir`, `assets_d
   stable source signature (path, size, mtime) in the ledger to avoid reprocessing.
 - Windows: long-path prefix and the `\\?\UNC\` form for network paths (`file_ops`).
 - The parser never raises: on unexpected text it returns deterministic defaults.
+- The AFIP QR (decoded from embedded images) is authoritative over the text for
+  voucher, number, issuer and buyer (ADR 0011). A lone CUIT of unknown role is never
+  taken as the issuer: on pre-printed forms it is the customer's.
 - Duplicate detection uses `normalize_name(supplier)|number|type` against the
   ledger and, when present, the exact `issuer_cuit|number|type` key. Only
   MOVED/UNCLASSIFIED results count as already filed.

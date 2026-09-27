@@ -21,6 +21,8 @@ dependencies = [
     "platformdirs>=4.2",
     "customtkinter>=5.2",
     "openpyxl>=3.1",
+    "pillow>=10.0",
+    "zxing-cpp>=3.0",
 ]
 
 [project.optional-dependencies]
@@ -33,7 +35,6 @@ dev = [
     "import-linter>=2.1",
     "pyinstaller>=6.6",
     "reportlab>=4.0",
-    "pillow>=10.0",
 ]
 
 [project.gui-scripts]

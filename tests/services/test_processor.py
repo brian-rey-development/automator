@@ -17,6 +17,9 @@ from fixtures.invoices import (
     FACTURA_A_TEXT,
     ORDEN_COMPRA_NO_CUIT_TEXT,
     ORDEN_COMPRA_TEXT,
+    PREPRINTED_FORM_TEXT,
+    SUPPLIER_CUIT,
+    afip_qr_url,
 )
 
 
@@ -342,3 +345,75 @@ def test_supplier_equal_to_society_lands_in_review_folder(
     assert result.outcome is ProcessOutcome.NEEDS_REVIEW
     assert result.destination is not None
     assert config.review_folder in result.destination.parents
+
+
+def _qr_processor(config: AppConfig, text: str, qr_url: str, registry: SupplierRegistry) -> InvoiceProcessor:
+    return InvoiceProcessor(
+        lambda: config,
+        extractor=lambda _path: text,
+        registry_provider=lambda: registry,
+        qr_reader=lambda _path: (qr_url,),
+    )
+
+
+def test_preprinted_form_is_filed_from_its_qr(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    # The issuer header is an image; only the QR names the issuer, the registry names it.
+    config = make_config()
+    registry = SupplierRegistry([Supplier(cuit=SUPPLIER_CUIT, legal_name="PROVEEDOR PREIMPRESO SA")])
+    qr = afip_qr_url(ptoVta=2, nroCmp=3590)
+    result = _qr_processor(config, PREPRINTED_FORM_TEXT, qr, registry).process(dummy_pdf("preimpreso.pdf"))
+
+    expected = config.folder_for_cuit(CUIT_ONE) / "PROVEEDOR PREIMPRESO SA"
+    assert result.outcome is ProcessOutcome.MOVED
+    assert result.destination == expected / "PROVEEDOR PREIMPRESO SA FC A 00002-00003590.pdf"
+
+
+def test_qr_issuer_outside_registry_goes_to_review(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config()
+    qr = afip_qr_url(ptoVta=2, nroCmp=3590)
+    result = _qr_processor(config, PREPRINTED_FORM_TEXT, qr, SupplierRegistry([])).process(dummy_pdf("x.pdf"))
+    assert result.outcome is ProcessOutcome.NEEDS_REVIEW
+
+
+def test_qr_issuer_is_not_replaced_by_another_cuit_in_the_text(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    # The text mentions a registered supplier, but the QR names a different issuer.
+    config = make_config()
+    registry = SupplierRegistry([Supplier(cuit="30707730214", legal_name="OTRO PROVEEDOR SA")])
+    text = f"FACTURA\nCod. 01\nCUIT: 30-70773021-4\nCUIT: {CUIT_ONE}\n"
+    result = _qr_processor(config, text, afip_qr_url(), registry).process(dummy_pdf("x.pdf"))
+    assert result.outcome is ProcessOutcome.NEEDS_REVIEW
+
+
+def test_scanned_pdf_with_qr_is_not_quarantined(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    config = make_config()
+    registry = SupplierRegistry([Supplier(cuit=SUPPLIER_CUIT, legal_name="PROVEEDOR ESCANEADO SA")])
+    result = _qr_processor(config, "", afip_qr_url(), registry).process(dummy_pdf("escaneo.pdf"))
+    assert result.outcome is ProcessOutcome.MOVED
+    assert result.destination is not None
+    assert result.destination.name == "PROVEEDOR ESCANEADO SA FC A 0003-00010650.pdf"
+
+
+def test_purchase_order_with_a_non_afip_qr_stays_an_order(
+    make_config: Callable[..., AppConfig], dummy_pdf: Callable[[str], Path]
+) -> None:
+    # Only an AFIP/ARCA voucher QR turns a document into an invoice; any other QR
+    # printed on an order (payment, tracking) is ignored.
+    config = make_config()
+    processor = InvoiceProcessor(
+        lambda: config,
+        extractor=lambda _path: ORDEN_COMPRA_TEXT,
+        qr_reader=lambda _path: (afip_qr_url(host="www.mercadopago.com.ar/"), "https://example.com/pedido/4046"),
+    )
+    result = processor.process(dummy_pdf("orden.pdf"))
+
+    assert result.destination is not None
+    assert config.orders_folder in result.destination.parents
+    assert result.destination.name == "FERRETERIA EJEMPLO SRL OC 2026-00004046.pdf"

@@ -13,14 +13,16 @@ from automator.domain.filenames import build_filename
 from automator.domain.filing import FilingDecision, FilingFolders, archive_base, decide_filing, destination_dir
 from automator.domain.models import ParsedInvoice, ProcessOutcome, ProcessResult
 from automator.domain.parser import parse_invoice
+from automator.domain.parser.afip_qr import unique_afip_qr
 from automator.domain.suppliers import SupplierRegistry
 from automator.services import file_ops
-from automator.services.pdf_reader import extract_text
+from automator.services.pdf_reader import extract_text, read_qr_payloads
 from automator.services.processing.placement import place_file
 
 logger = logging.getLogger(__name__)
 
 TextExtractor = Callable[[Path], str]
+QrReader = Callable[[Path], tuple[str, ...]]
 DuplicateCheck = Callable[[ParsedInvoice], bool]
 RegistryProvider = Callable[[], SupplierRegistry]
 
@@ -42,9 +44,11 @@ class InvoiceProcessor:
         extractor: TextExtractor = extract_text,
         is_duplicate: DuplicateCheck = _never_duplicate,
         registry_provider: RegistryProvider = empty_registry,
+        qr_reader: QrReader = read_qr_payloads,
     ) -> None:
         self._config_provider = config_provider
         self._extractor = extractor
+        self._qr_reader = qr_reader
         self._is_duplicate = is_duplicate
         self._registry_provider = registry_provider
 
@@ -88,13 +92,17 @@ class InvoiceProcessor:
         except Exception as exc:
             logger.exception("Fallo al leer el PDF %s", source)
             return self._quarantine(source, config, f"No se pudo leer el PDF: {exc}")
-        if not text.strip():
+        qr = unique_afip_qr(self._qr_reader(source))
+        if not text.strip() and qr is None:
             return self._quarantine(source, config, "El PDF no contiene texto legible (posible escaneo).")
-        return text, parse_invoice(text, config.known_cuits())
+        return text, parse_invoice(text, config.known_cuits(), qr)
 
     def _canonicalize_supplier(self, invoice: ParsedInvoice, text: str, buyer: BuyerResolution) -> ParsedInvoice:
-        exclude = {buyer.cuit} if buyer.cuit else set()
-        match = self._registry_provider().match(text, exclude_cuits=exclude)
+        registry = self._registry_provider()
+        if invoice.qr_verified and invoice.issuer_cuit is not None:
+            match = registry.by_cuit(invoice.issuer_cuit)
+        else:
+            match = registry.match(text, exclude_cuits={buyer.cuit} if buyer.cuit else set())
         if match is None:
             return invoice
         return dataclasses.replace(invoice, supplier=match.legal_name, issuer_cuit=match.cuit)

@@ -52,3 +52,36 @@ def test_falls_back_to_plain_when_layout_is_empty(pdf: Path, monkeypatch: pytest
 def test_layout_failure_on_a_page_falls_back_to_plain(pdf: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _patch(monkeypatch, [_FakePage("", "plain content", raise_on_layout=True)])
     assert pdf_reader.extract_text(pdf) == "plain content"
+
+
+def _pdf_with_qr(path: Path, payload: str, copies: int = 1) -> Path:
+    import zxingcpp
+    from PIL import Image
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    qr = zxingcpp.create_barcode(payload, zxingcpp.BarcodeFormat.QRCode).to_image(scale=4)
+    height, width = memoryview(qr).shape
+    image = ImageReader(Image.frombytes("L", (width, height), bytes(memoryview(qr))))
+    pdf = canvas.Canvas(str(path))
+    for _ in range(copies):
+        pdf.drawString(72, 750, "FACTURA")
+        pdf.drawImage(image, 72, 500, width=120, height=120)
+        pdf.showPage()
+    pdf.save()
+    return path
+
+
+def test_reads_qr_from_embedded_image(tmp_path: Path) -> None:
+    pdf_path = _pdf_with_qr(tmp_path / "qr.pdf", "https://www.afip.gob.ar/fe/qr/?p=abc")
+    assert pdf_reader.read_qr_payloads(pdf_path) == ("https://www.afip.gob.ar/fe/qr/?p=abc",)
+
+
+def test_reads_the_repeated_qr_of_a_duplicate_copy(tmp_path: Path) -> None:
+    pdf_path = _pdf_with_qr(tmp_path / "qr.pdf", "https://www.afip.gob.ar/fe/qr/?p=abc", copies=2)
+    assert len(pdf_reader.read_qr_payloads(pdf_path)) == 2
+
+
+def test_qr_reader_never_raises_on_a_broken_pdf(pdf: Path) -> None:
+    assert pdf_reader.read_qr_payloads(pdf) == ()
+    assert pdf_reader.read_qr_payloads(pdf.parent / "no_existe.pdf") == ()

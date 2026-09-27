@@ -38,23 +38,25 @@ flowchart TD
 
 `pdf_reader.extract_text` opens the PDF inside a `with` block so the handle is closed before any later move (an open handle on Windows raises WinError 32). It concatenates pages in layout mode first, because that keeps the column order AFIP templates use for the voucher number. When layout yields only whitespace, it retries in plain mode. A single corrupt page is skipped so the rest of the document can still be read.
 
-A reader exception or a file whose extracted text is empty (a scan without a text layer) goes to `_ERRORES` via `_quarantine`. Dry-run records that failure as `ERROR` and leaves the file in place.
+`pdf_reader.read_qr_payloads` then decodes any QR in the images of the first three pages. `unique_afip_qr` keeps it only when it is an AFIP/ARCA voucher QR and all copies agree (ADR 0011).
+
+A reader exception, or a file with no extracted text and no readable QR (a scan without a text layer), goes to `_ERRORES` via `_quarantine`. Dry-run records that failure as `ERROR` and leaves the file in place.
 
 ## Parsing
 
-`parse_invoice(text, config.known_cuits())` decides the document kind first. `looks_like_order` is header-anchored: `ORDEN DE COMPRA` or `ORD COMPRA` at the start of a line. A factura whose body happens to mention those words stays a factura.
+`parse_invoice(text, config.known_cuits(), qr)` decides the document kind first. With a QR it is always a factura and `merge_qr` overlays the voucher, number, issuer CUIT, date and buyer from it (the receiver CUIT, when it is one of our companies). Without one, `looks_like_order` is header-anchored: `ORDEN DE COMPRA` or `ORD COMPRA` at the start of a line, and never on a document that carries a CAE. A factura that quotes the buyer's order stays a factura.
 
-`parse_factura` pulls the voucher from `detect_voucher` (AFIP `Cod. NN` against the table in `afip_codes.py`, then kind/letter regexes, default `FC A`), the number from `detect_number` (anchored "Punto de Venta / Comp. Nro", then split layout, then a unique standalone `NNNN-NNNNNNNN`), the supplier from the first `Razon Social` column, the date from `Fecha de Emision`, the buyer from `detect_buyer_cuit`, and the issuer from `unique_issuer_cuit`. `parse_order` does the same job with order-specific patterns (`ORD COMPRA NRO: 2026-00004046`, `Proveedor:`, `Sociedad:`) and sets `document_type` to `ORDEN_COMPRA` so `type_label` becomes `OC`.
+`parse_factura` pulls the voucher from `detect_voucher` (AFIP `Cod. NN` against the table in `afip_codes.py`, then kind/letter regexes, default `FC A`), the number from `detect_number` (anchored "Punto de Venta / Comp. Nro" including `Compr.` and `;`, then the `Factura NNNN-NNNN` title for invoices only, then split layout, then a unique standalone `NNNN-NNNNNNNN` that is not preceded by `Remito`, `Asociado` or, on a note, the quoted `Factura`), the supplier from the first `Razon Social` column, the date from `Fecha de Emision`, the buyer from `detect_buyer_cuit`, and the issuer from `unique_issuer_cuit`. `parse_order` does the same job with order-specific patterns (`ORD COMPRA NRO: 2026-00004046`, `Proveedor:`, `Sociedad:`) and sets `document_type` to `ORDEN_COMPRA` so `type_label` becomes `OC`.
 
 Missing pieces become the filler defaults: sales point `0000`, number `00000000`, supplier `PROVEEDOR_DESCONOCIDO`. Those defaults are what `has_number` and `has_supplier` later treat as incomplete.
 
 `detect_buyer_cuit` extracts every valid CUIT on the page and intersects them with the configured society list. Zero hits leave `buyer_cuit` empty. One hit is that CUIT. Two or more set `ambiguous_buyer=True` and leave the CUIT empty, which is how an intercompany invoice reaches review.
 
-`unique_issuer_cuit` takes the same extracted set, discards the buyer CUIT, and returns the leftover only when exactly one CUIT remains. Zero leftover, or two leftover, means `issuer_cuit` stays empty. Only values that pass the AFIP check digit count; a number embedded in a longer run (a CAE) is ignored.
+`unique_issuer_cuit` takes the same extracted set, discards the buyer CUIT, and returns the leftover only when exactly one CUIT remains. A page whose only CUIT is not a known buyer yields no issuer: on a pre-printed form that lone CUIT is the customer's. Zero leftover, or two leftover, means `issuer_cuit` stays empty. Only values that pass the AFIP check digit count; a number embedded in a longer run (a CAE) is ignored.
 
 ## Supplier matching
 
-After the parse, `InvoiceProcessor._canonicalize_supplier` asks the live `SupplierRegistry` snapshot to `match` the raw text, excluding the buyer's CUIT so a society that also appears as an issuer is ignored.
+After the parse, `InvoiceProcessor._canonicalize_supplier` looks a QR-verified issuer up with `SupplierRegistry.by_cuit`. Otherwise it asks the live snapshot to `match` the raw text, excluding the buyer's CUIT so a society that also appears as an issuer is ignored. `match` refuses a lone CUIT of unknown role, for the same reason as `unique_issuer_cuit`.
 
 `match` extracts leftover CUITs the same way the parser does (valid check digit only) and subtracts `exclude_cuits`. Those leftovers are looked up in the CUIT index. Exactly one implicated supplier wins: the invoice's `supplier` becomes that row's `legal_name` and `issuer_cuit` becomes that row's CUIT, which is how two invoices that print the name differently still file into the same folder.
 
@@ -77,7 +79,7 @@ Fuzzy comparison is `SequenceMatcher` on `normalize_name` against every `Society
 | Condition | Outcome | Destination |
 |---|---|---|
 | `buyer.ambiguous` | `NEEDS_REVIEW` | `_PARA_REVISAR` |
-| `is_reliable` is false (missing number, unknown supplier, or issuer name equals one of your own societies) | `NEEDS_REVIEW` | `_PARA_REVISAR` |
+| `is_reliable` is false (missing number, unknown supplier, or issuer name equals or contains one of your own societies, ignoring punctuation; containment only for names of 8+ characters) | `NEEDS_REVIEW` | `_PARA_REVISAR` |
 | `is_duplicate` | `DUPLICATE` | `_DUPLICADOS` |
 | `buyer.fuzzy` | `NEEDS_REVIEW` | `_PARA_REVISAR` |
 | `buyer.cuit` is set | `MOVED` | company folder, then `destination_template` |

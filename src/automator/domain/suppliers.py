@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from automator.domain.cuit import Cuit, extract_cuits
+from automator.domain.cuit import Cuit, extract_cuits, is_lone_unknown_cuit
 from automator.domain.names import LegalName, normalize_name
 
 # The text fallback ignores very short aliases (an "SA" would hit every invoice).
@@ -42,13 +42,20 @@ class SupplierRegistry:
         return len(self._suppliers)
 
     def match(self, text: str, exclude_cuits: set[str]) -> Supplier | None:
-        leftover = extract_cuits(text) - exclude_cuits
+        found = extract_cuits(text)
+        if is_lone_unknown_cuit(found, exclude_cuits):
+            return None
+        leftover = found - exclude_cuits
         by_cuit = self._match_cuit(leftover)
         if by_cuit is not None:
             return by_cuit
         if leftover:
             return None
         return self._match_text(text, exclude_cuits)
+
+    def by_cuit(self, cuit: str) -> Supplier | None:
+        candidates = self._by_cuit.get(cuit, [])
+        return candidates[0] if len(candidates) == 1 else None
 
     def search(self, query: str, limit: int) -> list[Supplier]:
         needle = normalize_name(query)

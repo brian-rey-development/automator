@@ -93,3 +93,11 @@ def test_require_valid_cuit_normalizes_a_good_value() -> None:
 def test_require_valid_cuit_rejects_a_bad_check_digit() -> None:
     with pytest.raises(ValueError, match="no es valido"):
         require_valid_cuit("30111111110")
+
+
+def test_unique_issuer_cuit_ignores_a_lone_cuit_of_unknown_role() -> None:
+    assert unique_issuer_cuit("Sr/es CLIENTE CUIT 30-99999999-5", None) is None
+
+
+def test_lone_buyer_cuit_leaves_no_issuer() -> None:
+    assert unique_issuer_cuit("CUIT 30-99999999-5", "30999999995") is None

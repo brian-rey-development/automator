@@ -20,7 +20,7 @@ a = Analysis(
     hiddenimports=(
         _ctk_hiddenimports
         + _watchdog_hiddenimports
-        + ["pypdf", "pydantic", "pydantic_core", "platformdirs", "openpyxl", "et_xmlfile"]
+        + ["pypdf", "pydantic", "pydantic_core", "platformdirs", "openpyxl", "et_xmlfile", "PIL", "zxingcpp"]
     ),
     hookspath=[],
     runtime_hooks=[],

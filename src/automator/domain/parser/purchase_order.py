@@ -9,7 +9,7 @@ from automator.domain.cuit import unique_issuer_cuit
 from automator.domain.models import UNKNOWN_SUPPLIER, DocumentType, ParsedInvoice, Voucher, VoucherKind
 from automator.domain.parser.afip_codes import DEFAULT_LETTER
 from automator.domain.parser.numbers import default_number
-from automator.domain.parser.text import detect_buyer_cuit, detect_date, first_column
+from automator.domain.parser.text import detect_buyer_cuit, detect_date, first_column, has_cae
 
 _ORDER_PATTERN = re.compile(r"(?m)^\s*\bORD(?:EN)?\.?\s+(?:DE\s+)?COMPRA\b", re.IGNORECASE)
 _ORDER_NUMBER_PATTERN = re.compile(
@@ -21,7 +21,8 @@ _BUYER_PATTERN = re.compile(r"Sociedad\s*:?\s*(.+)", re.IGNORECASE)
 
 
 def looks_like_order(text: str) -> bool:
-    return _ORDER_PATTERN.search(text) is not None
+    # Invoices often quote the buyer's order ("ORDEN DE COMPRA N 2621") on a line of its own.
+    return _ORDER_PATTERN.search(text) is not None and not has_cae(text)
 
 
 def parse_order(text: str, known_cuits: Iterable[str]) -> ParsedInvoice:

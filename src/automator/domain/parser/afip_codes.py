@@ -33,6 +33,16 @@ AFIP_CODES: dict[str, tuple[VoucherKind, str]] = {
     "51": (VoucherKind.INVOICE, "M"),
     "52": (VoucherKind.DEBIT_NOTE, "M"),
     "53": (VoucherKind.CREDIT_NOTE, "M"),
+    # Factura de Credito Electronica MiPyME (FCE): same kinds and letters.
+    "201": (VoucherKind.INVOICE, "A"),
+    "202": (VoucherKind.DEBIT_NOTE, "A"),
+    "203": (VoucherKind.CREDIT_NOTE, "A"),
+    "206": (VoucherKind.INVOICE, "B"),
+    "207": (VoucherKind.DEBIT_NOTE, "B"),
+    "208": (VoucherKind.CREDIT_NOTE, "B"),
+    "211": (VoucherKind.INVOICE, "C"),
+    "212": (VoucherKind.DEBIT_NOTE, "C"),
+    "213": (VoucherKind.CREDIT_NOTE, "C"),
 }
 
 
@@ -45,12 +55,16 @@ def detect_voucher(text: str) -> Voucher:
     return Voucher(kind, letter)
 
 
+def voucher_for_code(code: int) -> Voucher | None:
+    known = AFIP_CODES.get(f"{code:02d}")
+    return Voucher(*known) if known is not None else None
+
+
 def _detect_by_afip_code(text: str) -> Voucher | None:
     for match in _CODE_PATTERN.finditer(text):
-        code = f"{int(match.group(1)):02d}"
-        if code in AFIP_CODES:
-            kind, letter = AFIP_CODES[code]
-            return Voucher(kind, letter)
+        voucher = voucher_for_code(int(match.group(1)))
+        if voucher is not None:
+            return voucher
     return None
 
 

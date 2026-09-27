@@ -16,7 +16,7 @@ The parser has to return something the rest of the domain can judge (`has_number
 
 Defaults are `Voucher(INVOICE, "A")` so `type_label` is `FC A`, sales point `0000` and number `00000000` (`default_number` in `numbers.py`), supplier `PROVEEDOR_DESCONOCIDO`, `buyer_cuit` `None`, `issue_date` `None`. `has_number` and `has_supplier` are then false, and `is_reliable` sends the file to review.
 
-Factura vs purchase order is header-anchored. `looks_like_order` matches `(?m)^\s*\bORD(?:EN)?\.?\s+(?:DE\s+)?COMPRA\b`. A factura whose observations mention "ORDEN DE COMPRA" stays `DocumentType.FACTURA` (`test_factura_that_mentions_orden_de_compra_stays_a_factura`). Orders go through `parse_order` (`type_label` `OC`, supplier from `Proveedor:`, buyer name from `Sociedad:`).
+Factura vs purchase order is header-anchored. `looks_like_order` matches `(?m)^\s*\bORD(?:EN)?\.?\s+(?:DE\s+)?COMPRA\b`. A factura whose observations mention "ORDEN DE COMPRA" stays `DocumentType.FACTURA` (`test_factura_that_mentions_orden_de_compra_stays_a_factura`). A document with a 14-digit CAE is never an order, even when it quotes the buyer's order on a line of its own (`has_cae`). When the AFIP QR is readable it overrides the text parse entirely (ADR 0011). Orders go through `parse_order` (`type_label` `OC`, supplier from `Proveedor:`, buyer name from `Sociedad:`).
 
 Voucher kind and letter prefer AFIP codes in `afip_codes.py` (`Cod. 01` -> `FC A`, `06` -> `FC B`, `03` -> `NC A`, and the rest of `AFIP_CODES`). Codes are digit-bounded so a CAE after "Codigo" is ignored. Missing codes fall back to the text patterns `NOTA DE CREDITO`, `NOTA DE DEBITO`, `FACTURA`, and a letter `[ABCEM]`. The last fallback is `FC A`.
 

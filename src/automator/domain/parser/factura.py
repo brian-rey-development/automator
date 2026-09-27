@@ -6,7 +6,7 @@ import re
 from collections.abc import Iterable
 
 from automator.domain.cuit import unique_issuer_cuit
-from automator.domain.models import UNKNOWN_SUPPLIER, ParsedInvoice
+from automator.domain.models import UNKNOWN_SUPPLIER, ParsedInvoice, VoucherKind
 from automator.domain.parser.afip_codes import detect_voucher
 from automator.domain.parser.numbers import detect_number
 from automator.domain.parser.text import detect_buyer_cuit, detect_date, first_column
@@ -15,10 +15,11 @@ _SUPPLIER_PATTERN = re.compile(r"Raz[oó]n\s+Social\s*:?\s*(.+)", re.IGNORECASE)
 
 
 def parse_factura(text: str, known_cuits: Iterable[str]) -> ParsedInvoice:
-    sales_point, number = detect_number(text)
+    voucher = detect_voucher(text)
+    sales_point, number = detect_number(text, read_title=voucher.kind is VoucherKind.INVOICE)
     buyer_cuit, ambiguous = detect_buyer_cuit(text, known_cuits)
     return ParsedInvoice(
-        voucher=detect_voucher(text),
+        voucher=voucher,
         sales_point=sales_point,
         number=number,
         supplier=_detect_supplier(text),

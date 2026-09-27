@@ -9,11 +9,17 @@ from datetime import date
 from automator.domain.cuit import extract_cuits
 
 _COLUMN_GAP = re.compile(r"\s{2,}")
+# Only AFIP-authorized vouchers carry a 14-digit CAE (or CAEA); a purchase order never does.
+_CAE_PATTERN = re.compile(r"\bC\.?A\.?E\.?A?\.?(?![A-Za-z])[^\d\n]{0,40}\d{14}(?!\d)", re.IGNORECASE)
 _DATE_PATTERN = re.compile(r"Fecha\s+de\s+Emisi[oó]n\s*:?\s*(\d{2})/(\d{2})/(\d{4})", re.IGNORECASE)
 
 
 def first_column(value: str) -> str:
     return _COLUMN_GAP.split(value, maxsplit=1)[0].strip()
+
+
+def has_cae(text: str) -> bool:
+    return _CAE_PATTERN.search(text) is not None
 
 
 def detect_date(text: str) -> date | None:

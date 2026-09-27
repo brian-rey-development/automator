@@ -98,3 +98,14 @@ def test_unknown_supplier_is_unreliable() -> None:
     from automator.domain.models import UNKNOWN_SUPPLIER
 
     assert is_reliable(_invoice(UNKNOWN_SUPPLIER), ()) is False
+
+
+def test_buyer_block_read_as_supplier_is_unreliable() -> None:
+    # "Razon Social: 6727-CUENCA DEL SALADO S.A." is the customer block, not the issuer.
+    society = _Society("30111111118", ("COMPRADORA UNO SA",))
+    assert is_reliable(_invoice("6727-COMPRADORA UNO S.A."), (society,)) is False
+
+
+def test_short_society_name_only_matches_exactly() -> None:
+    society = _Society("30111111118", ("ACME",))
+    assert is_reliable(_invoice("ACME INDUSTRIAL SRL"), (society,)) is True
