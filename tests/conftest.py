@@ -7,8 +7,21 @@ from pathlib import Path
 
 import pytest
 
+from automator import paths
 from automator.config import QUARANTINE_FOLDER_NAME, UNKNOWN_FOLDER_NAME, AppConfig, SocietyMapping
 from fixtures.invoices import CUIT_ONE
+
+
+@pytest.fixture(autouse=True)
+def isolated_user_dirs(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep every test away from the real config, ledger and logs.
+
+    A ConfigStore built without an explicit path saves to the platform config dir; a
+    UI test once overwrote the developer's real config.json with pytest temp folders.
+    """
+    root = tmp_path_factory.mktemp("user_dirs")
+    for name in ("user_config_dir", "user_data_dir", "user_log_dir"):
+        monkeypatch.setattr(paths, name, lambda *_args, _dir=root / name, **_kwargs: str(_dir))
 
 
 @pytest.fixture
